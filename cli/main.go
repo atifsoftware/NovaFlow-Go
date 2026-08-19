@@ -31,6 +31,8 @@ func main() {
 		cmdMigrate()
 	case "migrate:rollback", "migrate-rollback", "rollback":
 		cmdMigrateRollback()
+	case "db:seed", "seed":
+		cmdSeed()
 	case "make:migration":
 		requireArg(2, "migration name")
 		cmdMakeMigration(os.Args[2])
@@ -60,6 +62,7 @@ Usage:
   go run ./cli --routes              List all registered routes
   go run ./cli migrate               Run pending SQL migrations in database/migrations
   go run ./cli migrate:rollback      Rollback the last batch of migrations
+  go run ./cli db:seed               Seed database with default user and products
   go run ./cli make:migration Name   Create a new migration file with timestamp
   go run ./cli make:controller Name  Scaffold app/controllers/name_controller.go
   go run ./cli make:model Name       Scaffold app/models/name.go`)
@@ -380,3 +383,69 @@ func execSQLStatements(db *core.DB, sqlContent string) error {
 	}
 	return nil
 }
+
+func cmdSeed() {
+	app := core.NewApp(".env", "")
+	if app.DB == nil {
+		fmt.Println("No database configured (set DB_HOST in .env)")
+		os.Exit(1)
+	}
+
+	fmt.Println("NovaFlow Seeder")
+	fmt.Println("---------------")
+
+	// 1. Seed Default User
+	existingUser, err := app.DB.Table("users").Where("email", "=", "admin@example.com").First()
+	if err != nil {
+		fmt.Println("Error checking users table (did you run migrations?):", err)
+		os.Exit(1)
+	}
+
+	if existingUser == nil {
+		hashedPassword, err := core.HashPassword("password")
+		if err != nil {
+			fmt.Println("Error hashing password:", err)
+			os.Exit(1)
+		}
+		_, err = app.DB.Table("users").Insert(map[string]interface{}{
+			"name":     "Admin User",
+			"email":    "admin@example.com",
+			"password": hashedPassword,
+		})
+		if err != nil {
+			fmt.Println("Error seeding default user:", err)
+			os.Exit(1)
+		}
+		fmt.Println("✅ Seeded user: admin@example.com (Password: password)")
+	} else {
+		fmt.Println("ℹ️ Default user admin@example.com already exists. Skipped.")
+	}
+
+	// 2. Seed Default Products
+	productCount, err := app.DB.Table("products").Count()
+	if err != nil {
+		fmt.Println("Warning: products table not ready or not found:", err)
+		return
+	}
+
+	if productCount == 0 {
+		products := []map[string]interface{}{
+			{"name": "MacBook Pro M3", "price": 1999.99},
+			{"name": "iPhone 15 Pro", "price": 999.99},
+			{"name": "iPad Air", "price": 599.99},
+		}
+		for _, p := range products {
+			_, err = app.DB.Table("products").Insert(p)
+			if err != nil {
+				fmt.Printf("Error seeding product %s: %v\n", p["name"], err)
+			} else {
+				fmt.Printf("✅ Seeded product: %s ($%.2f)\n", p["name"], p["price"])
+			}
+		}
+	} else {
+		fmt.Println("ℹ️ Products table already has data. Skipped.")
+	}
+
+	fmt.Println("Seeding completed successfully!")
+}
+
