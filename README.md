@@ -28,10 +28,14 @@ novaflow-go/
 ├── app/                  # Application Business Logic
 │   ├── controllers/      # Route controllers (Product, Auth, Home)
 │   ├── models/           # DB Schema definitions & models
-│   ├── middleware/       # Custom application middleware
+│   ├── middleware/       # Custom middleware & central Kernel registry (kernel.go, request_id.go)
 │   └── views/            # HTML layouts & template views
-├── config/
-│   └── routes.go         # central route mappings
+├── config/               # Central & modular routing configurations
+│   ├── routes.go         # Route entry point / dispatcher
+│   ├── web.go            # Session-based web routes
+│   ├── api.go            # JWT bearer API routes
+│   ├── auth.go           # OAuth & custom auth placeholders
+│   └── admin.go          # Admin panel route placeholders
 ├── core/                 # Framework Engines (Router, DB, ORM, Auth, Validator, Logger)
 ├── cli/
 │   ├── main.go           # CLI Assistant tool (migrate, rollback, make:model/controller/migration)
