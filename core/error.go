@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -73,11 +74,11 @@ func NewPanicDetail(err interface{}, r *http.Request) PanicDetail {
 		detail.CodeContext = getSourceContext(offendingFrame.File, offendingFrame.Line)
 	}
 
-	// Search links
+	// Search links — BUG-09: use url.QueryEscape for RFC-3986 compliant encoding
 	query := fmt.Sprintf("Go %s", message)
 	detail.SearchLinks = map[string]string{
-		"google":        "https://www.google.com/search?q=" + strings.ReplaceAll(query, " ", "+"),
-		"stackoverflow": "https://stackoverflow.com/search?q=" + strings.ReplaceAll(query, " ", "+"),
+		"google":        "https://www.google.com/search?q=" + url.QueryEscape(query),
+		"stackoverflow": "https://stackoverflow.com/search?q=" + url.QueryEscape(query),
 	}
 
 	// Environment parameters

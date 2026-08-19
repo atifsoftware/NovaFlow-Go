@@ -10,15 +10,30 @@ import (
 	"time"
 )
 
-// Logger logs method, path, status-implied duration for every request using slog.
+// responseCapture wraps http.ResponseWriter to capture the status code written by a handler.
+type responseCapture struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rc *responseCapture) WriteHeader(code int) {
+	rc.statusCode = code
+	rc.ResponseWriter.WriteHeader(code)
+}
+
+// Logger logs method, path, status code, and duration for every request using slog.
 func Logger() Middleware {
 	return func(next HandlerFunc) HandlerFunc {
 		return func(c *Context) {
 			start := time.Now()
+			// BUG-07: wrap writer to capture the response status code
+			rc := &responseCapture{ResponseWriter: c.Writer, statusCode: http.StatusOK}
+			c.Writer = rc
 			next(c)
 			slog.Info("HTTP request",
 				"method", c.Request.Method,
 				"path", c.Request.URL.Path,
+				"status", rc.statusCode,
 				"duration", time.Since(start),
 				"client_ip", clientIP(c.Request),
 			)
@@ -152,7 +167,24 @@ type RateLimiter struct {
 }
 
 func NewRateLimiter(max int, window time.Duration) *RateLimiter {
-	return &RateLimiter{buckets: make(map[string]*rateBucket), max: max, window: window}
+	rl := &RateLimiter{buckets: make(map[string]*rateBucket), max: max, window: window}
+	// BUG-05: start a background goroutine to clean up expired buckets,
+	// preventing unbounded memory growth for long-running servers.
+	go func() {
+		ticker := time.NewTicker(window)
+		defer ticker.Stop()
+		for range ticker.C {
+			now := time.Now()
+			rl.mu.Lock()
+			for key, b := range rl.buckets {
+				if now.After(b.windowEnd) {
+					delete(rl.buckets, key)
+				}
+			}
+			rl.mu.Unlock()
+		}
+	}()
+	return rl
 }
 
 func (rl *RateLimiter) Middleware() Middleware {

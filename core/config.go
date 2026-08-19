@@ -43,13 +43,13 @@ func LoadEnv(path string) (*Config, error) {
 			c.values[key] = val
 		}
 	}
-	// OS environment variables take precedence over .env file values.
+	// OS environment variables always win — load ALL of them unconditionally.
+	// This means production can inject entirely new keys (e.g. DATABASE_URL)
+	// without requiring them to be listed in .env first.
 	for _, kv := range os.Environ() {
 		parts := strings.SplitN(kv, "=", 2)
 		if len(parts) == 2 {
-			if _, exists := c.values[parts[0]]; exists {
-				c.values[parts[0]] = parts[1]
-			}
+			c.values[parts[0]] = parts[1]
 		}
 	}
 

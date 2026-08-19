@@ -254,7 +254,7 @@ func cmdMakeMigration(name string) {
 }
 
 func cmdMakeController(name string) {
-	base := strings.Title(strings.ToLower(name))
+	base := titleCase(strings.ToLower(name))
 	fileName := toSnake(name) + "_controller.go"
 	path := filepath.Join("app", "controllers", fileName)
 	if _, err := os.Stat(path); err == nil {
@@ -282,7 +282,7 @@ func (ctl *` + base + `Controller) Index(c *core.Context) {
 }
 
 func cmdMakeModel(name string) {
-	base := strings.Title(strings.ToLower(name))
+	base := titleCase(strings.ToLower(name))
 	fileName := toSnake(name) + ".go"
 	path := filepath.Join("app", "models", fileName)
 	if _, err := os.Stat(path); err == nil {
@@ -304,6 +304,21 @@ func (` + base + `) TableName() string { return "` + table + `" }
 		os.Exit(1)
 	}
 	fmt.Println("Created:", path)
+}
+
+// titleCase capitalizes the first letter of each word in s.
+// Replaces deprecated strings.Title() which mishandles Unicode.
+func titleCase(s string) string {
+	if s == "" {
+		return s
+	}
+	words := strings.Fields(s)
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, "")
 }
 
 func toSnake(s string) string {

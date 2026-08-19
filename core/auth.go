@@ -3,10 +3,12 @@ package core
 import (
 	"errors"
 	"net/http"
+	"os"
 	"time"
 )
 
 var ErrInvalidCredentials = errors.New("invalid email or password")
+var ErrEmailTaken = errors.New("email address is already registered")
 
 // AuthService implements both session (cookie) and JWT (API) authentication
 // against a "users" table with columns id, name, email, password.
@@ -50,6 +52,13 @@ func (a *AuthService) attemptLogin(email, password string) (map[string]interface
 	return user, nil
 }
 
+// isSecureEnv returns true when running in production or staging,
+// where cookies must be sent over HTTPS only.
+func isSecureEnv() bool {
+	env := os.Getenv("APP_ENV")
+	return env == "production" || env == "staging"
+}
+
 // Login performs web (session cookie) authentication and sets the cookie
 // directly on the response.
 func (a *AuthService) Login(w http.ResponseWriter, email, password string) (*AuthResult, error) {
@@ -67,6 +76,7 @@ func (a *AuthService) Login(w http.ResponseWriter, email, password string) (*Aut
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   isSecureEnv(), // BUG-02: set Secure=true in production/staging
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(a.sessionTTL),
 	})
@@ -116,7 +126,16 @@ func (a *AuthService) CurrentSessionUser(r *http.Request) (interface{}, bool) {
 }
 
 // Register creates a new user with a hashed password.
+// Returns ErrEmailTaken if the email address is already in use.
 func (a *AuthService) Register(name, email, password string) (int64, error) {
+	// BUG-03: check for duplicate email before attempting INSERT
+	existing, err := a.db.Table("users").Where("email", "=", email).First()
+	if err != nil {
+		return 0, err
+	}
+	if existing != nil {
+		return 0, ErrEmailTaken
+	}
 	hashed, err := HashPassword(password)
 	if err != nil {
 		return 0, err

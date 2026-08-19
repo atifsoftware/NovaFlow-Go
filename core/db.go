@@ -228,9 +228,11 @@ func (q *QueryBuilder) Get() ([]map[string]interface{}, error) {
 }
 
 // First returns the first matching row, or nil if none found.
+// It operates on a clone so the original QueryBuilder is not mutated.
 func (q *QueryBuilder) First() (map[string]interface{}, error) {
-	q.limitN = 1
-	rows, err := q.Get()
+	clone := q.Clone()
+	clone.limitN = 1
+	rows, err := clone.Get()
 	if err != nil {
 		return nil, err
 	}
@@ -241,9 +243,11 @@ func (q *QueryBuilder) First() (map[string]interface{}, error) {
 }
 
 // Count returns the number of matching rows.
+// It operates on a clone so the original QueryBuilder is not mutated.
 func (q *QueryBuilder) Count() (int64, error) {
-	q.columns = []string{"COUNT(*) as cnt"}
-	row, err := q.First()
+	clone := q.Clone()
+	clone.columns = []string{"COUNT(*) as cnt"}
+	row, err := clone.First()
 	if err != nil {
 		return 0, err
 	}

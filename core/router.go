@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 )
@@ -35,11 +36,20 @@ type Router struct {
 func NewRouter(app *App) *Router {
 	return &Router{
 		app: app,
+		// BUG-08: Smart error handlers — JSON for API clients, HTML for browsers
 		NotFound: func(c *Context) {
-			c.JSONError(http.StatusNotFound, "route not found: "+c.Request.URL.Path)
+			if isJSONRequest(c.Request) {
+				c.JSONError(http.StatusNotFound, "route not found: "+c.Request.URL.Path)
+			} else {
+				c.HTML(http.StatusNotFound, notFoundHTML(c.Request.URL.Path))
+			}
 		},
 		MethodNotAllowed: func(c *Context) {
-			c.JSONError(http.StatusMethodNotAllowed, "method not allowed")
+			if isJSONRequest(c.Request) {
+				c.JSONError(http.StatusMethodNotAllowed, "method not allowed")
+			} else {
+				c.HTML(http.StatusMethodNotAllowed, "<h1>405 — Method Not Allowed</h1>")
+			}
 		},
 	}
 }
@@ -169,4 +179,36 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		final = rt.middleware[i](final)
 	}
 	final(ctx)
+}
+
+// isJSONRequest returns true if the client prefers a JSON response
+// (API calls set Accept: application/json or use /api/ prefix).
+func isJSONRequest(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "application/json") ||
+		strings.HasPrefix(r.URL.Path, "/api/")
+}
+
+// notFoundHTML returns a minimal styled 404 HTML page for browser visitors.
+func notFoundHTML(path string) string {
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>404 — Page Not Found</title>
+<style>
+  body{background:#0b0f19;color:#f3f4f6;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+  .box{text-align:center;padding:40px}
+  h1{font-size:80px;margin:0;color:#ef4444}
+  p{color:#9ca3af;font-size:18px}
+  a{color:#60a5fa;text-decoration:none}
+</style>
+</head>
+<body>
+  <div class="box">
+    <h1>404</h1>
+    <p>The page <code>%s</code> could not be found.</p>
+    <a href="/">← Back to Home</a>
+  </div>
+</body>
+</html>`, path)
 }
