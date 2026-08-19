@@ -13,6 +13,8 @@ func registerWebRoutes(app *core.App, kernel *middleware.Kernel) {
 	home := controllers.NewHomeController()
 	r.Get("/", home.Index)
 	r.Get("/health", home.Health)
+	r.Static("/public", "public")
+
 
 	// API Interactive Swagger Documentation routes
 	docs := controllers.NewDocsController()

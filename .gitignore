@@ -8,3 +8,7 @@ storage/uploads/*
 !storage/cache/.gitkeep
 !storage/uploads/.gitkeep
 *.exe
+*~
+MyERP_Release/
+
+

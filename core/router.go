@@ -16,20 +16,22 @@ type Middleware func(HandlerFunc) HandlerFunc
 
 type route struct {
 	method     string
+	path       string
 	segments   []string
 	handler    HandlerFunc
 	middleware []Middleware
+	isPrefix   bool
 }
 
 // Router is a small, dependency-free HTTP router supporting static and
 // dynamic (":param") path segments, wildcard-free groups with shared
 // prefix + middleware, and per-route middleware.
 type Router struct {
-	app         *App
-	routes      []*route
-	groupPrefix string
-	groupMw     []Middleware
-	NotFound    HandlerFunc
+	app              *App
+	routes           []*route
+	groupPrefix      string
+	groupMw          []Middleware
+	NotFound         HandlerFunc
 	MethodNotAllowed HandlerFunc
 }
 
@@ -61,7 +63,7 @@ func (r *Router) add(method, path string, handler HandlerFunc, mw ...[]Middlewar
 	if len(mw) > 0 {
 		all = append(all, mw[0]...)
 	}
-	r.routes = append(r.routes, &route{method: method, segments: segs, handler: handler, middleware: all})
+	r.routes = append(r.routes, &route{method: method, path: full, segments: segs, handler: handler, middleware: all})
 }
 
 func (r *Router) Get(path string, h HandlerFunc)    { r.add(http.MethodGet, path, h) }
@@ -69,6 +71,21 @@ func (r *Router) Post(path string, h HandlerFunc)   { r.add(http.MethodPost, pat
 func (r *Router) Put(path string, h HandlerFunc)    { r.add(http.MethodPut, path, h) }
 func (r *Router) Patch(path string, h HandlerFunc)  { r.add(http.MethodPatch, path, h) }
 func (r *Router) Delete(path string, h HandlerFunc) { r.add(http.MethodDelete, path, h) }
+
+// Static serves static assets from a local directory under the given URL prefix.
+func (r *Router) Static(prefix, dir string) {
+	prefix = "/" + strings.Trim(prefix, "/")
+	fs := http.StripPrefix(prefix, http.FileServer(http.Dir(dir)))
+	handler := func(c *Context) {
+		fs.ServeHTTP(c.Writer, c.Request)
+	}
+	r.routes = append(r.routes, &route{
+		method:   http.MethodGet,
+		path:     prefix,
+		handler:  handler,
+		isPrefix: true,
+	})
+}
 
 // Resource registers the conventional REST 7 (index/show/store/update/destroy)
 // routes for a controller in one call, e.g. r.Resource("/products", ctrl).
@@ -88,11 +105,18 @@ type RouteInfo struct {
 }
 
 // Routes lists every registered route (method + path), for `cli.php --routes`-
-// style introspection.
+// like route introspection.
 func (r *Router) Routes() []RouteInfo {
 	out := make([]RouteInfo, 0, len(r.routes))
 	for _, rt := range r.routes {
-		out = append(out, RouteInfo{Method: rt.method, Path: "/" + strings.Join(rt.segments, "/")})
+		p := "/" + strings.Join(rt.segments, "/")
+		if p == "//" {
+			p = "/"
+		}
+		if rt.isPrefix {
+			p = rt.path + "/*"
+		}
+		out = append(out, RouteInfo{Method: rt.method, Path: p})
 	}
 	return out
 }
@@ -133,6 +157,15 @@ func (r *Router) match(method, path string) (*route, map[string]string, bool, bo
 	reqSegs := splitPath(path)
 	methodExistsForPath := false
 	for _, rt := range r.routes {
+		if rt.isPrefix {
+			if strings.HasPrefix(path, rt.path) {
+				methodExistsForPath = true
+				if rt.method == method {
+					return rt, map[string]string{}, true, true
+				}
+			}
+			continue
+		}
 		if len(rt.segments) != len(reqSegs) {
 			continue
 		}
