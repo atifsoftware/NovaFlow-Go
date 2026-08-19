@@ -3,6 +3,7 @@ package core
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -401,6 +402,64 @@ func (q *QueryBuilder) Count() (int64, error) {
 	}
 	return ToInt64(row["cnt"]), nil
 }
+
+// PaginationResult encapsulates paginated query results and metadata.
+type PaginationResult struct {
+	Data        []map[string]interface{} `json:"data"`
+	Total       int64                    `json:"total"`
+	CurrentPage int                      `json:"current_page"`
+	PerPage     int                      `json:"per_page"`
+	LastPage    int                      `json:"last_page"`
+	From        int                      `json:"from"`
+	To          int                      `json:"to"`
+}
+
+// Paginate executes a paginated query, computing total rows, last page, and offsets automatically.
+func (q *QueryBuilder) Paginate(page, perPage int) (*PaginationResult, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if perPage <= 0 {
+		perPage = 15
+	}
+
+	total, err := q.Count()
+	if err != nil {
+		return nil, err
+	}
+
+	lastPage := int(math.Ceil(float64(total) / float64(perPage)))
+	if lastPage == 0 {
+		lastPage = 1
+	}
+
+	offset := (page - 1) * perPage
+	rows, err := q.Clone().Limit(perPage).Offset(offset).Get()
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		rows = []map[string]interface{}{}
+	}
+
+	from := 0
+	to := 0
+	if total > 0 && len(rows) > 0 {
+		from = offset + 1
+		to = offset + len(rows)
+	}
+
+	return &PaginationResult{
+		Data:        rows,
+		Total:       total,
+		CurrentPage: page,
+		PerPage:     perPage,
+		LastPage:    lastPage,
+		From:        from,
+		To:          to,
+	}, nil
+}
+
 
 // Insert inserts a row from a column->value map and returns the new auto-increment ID.
 // For PostgreSQL, it automatically uses "RETURNING id" since LastInsertId is not supported.

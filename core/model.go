@@ -104,9 +104,52 @@ func (tq *TypedQuery[T]) First() (*T, error) {
 	return &entity, nil
 }
 
+// TypedPaginationResult encapsulates paginated query results with typed entity structs.
+type TypedPaginationResult[T Model] struct {
+	Data        []T   `json:"data"`
+	Total       int64 `json:"total"`
+	CurrentPage int   `json:"current_page"`
+	PerPage     int   `json:"per_page"`
+	LastPage    int   `json:"last_page"`
+	From        int   `json:"from"`
+	To          int   `json:"to"`
+}
+
+// Paginate executes a paginated query on the typed query, mapping rows to entity structs.
+func (tq *TypedQuery[T]) Paginate(page, perPage int) (*TypedPaginationResult[T], error) {
+	pgRes, err := tq.qb.Paginate(page, perPage)
+	if err != nil {
+		return nil, err
+	}
+
+	items, err := rowsToStructs[T](pgRes.Data)
+	if err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []T{}
+	}
+
+	return &TypedPaginationResult[T]{
+		Data:        items,
+		Total:       pgRes.Total,
+		CurrentPage: pgRes.CurrentPage,
+		PerPage:     pgRes.PerPage,
+		LastPage:    pgRes.LastPage,
+		From:        pgRes.From,
+		To:          pgRes.To,
+	}, nil
+}
+
+// Paginate returns paginated typed records directly from the repository.
+func (r *Repository[T]) Paginate(page, perPage int) (*TypedPaginationResult[T], error) {
+	return (&TypedQuery[T]{qb: r.db.Table(r.tableName())}).Paginate(page, perPage)
+}
+
 // Create inserts entity (skipping a zero-value "id" field so MySQL can
 // auto-increment it) and returns the new ID.
 func (r *Repository[T]) Create(entity *T) (int64, error) {
+
 	data := structToMap(entity, true)
 	return r.db.Table(r.tableName()).Insert(data)
 }

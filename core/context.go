@@ -137,10 +137,19 @@ func (c *Context) JSONSuccess(data interface{}) {
 	c.JSON(http.StatusOK, map[string]interface{}{"success": true, "data": data})
 }
 
+// JSONPaginated writes a standard paginated response envelope {success: true, ...}.
+func (c *Context) JSONPaginated(pagination interface{}) {
+	c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"result":  pagination,
+	})
+}
+
 // JSONError writes a {success:false, message} response.
 func (c *Context) JSONError(status int, message string) {
 	c.JSON(status, map[string]interface{}{"success": false, "message": message})
 }
+
 
 // String writes a plain text response.
 func (c *Context) String(status int, body string) {

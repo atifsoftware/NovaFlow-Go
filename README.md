@@ -207,6 +207,33 @@ func (pc *ProductController) Store(c *core.Context) {
 }
 ```
 
+### 4. Database Pagination (`Paginate()`)
+```go
+// Fetch paginated results for ERP reports or API lists in 1 line:
+result, err := app.DB.Table("invoices").
+    Where("status", "=", "unpaid").
+    OrderBy("id", "DESC").
+    Paginate(c.QueryInt("page", 1), 20)
+
+// Or with typed entity repository:
+products, err := productRepo.Where("price", ">", 100).Paginate(1, 15)
+
+// Standard JSON response:
+c.JSONPaginated(result)
+```
+
+### 5. Number to Words (English & Bengali) for ERP Billing
+```go
+// English: "Fifteen Thousand Four Hundred Fifty Taka and Fifty Paisa Only"
+inWordsEn := core.NumberToWordsEn(15450.50)
+
+// Bengali: "পনের হাজার চার শত পঞ্চাশ টাকা পঞ্চাশ পয়সা মাত্র"
+inWordsBn := core.NumberToWordsBn(15450.50)
+
+// Custom currency: "One Hundred Dollars and Fifty Cents Only"
+inUSD := core.NumberToWords(100.50, core.NumberToWordsOptions{Currency: "USD"})
+```
+
 ---
 
 # নোভাফ্লো (গো সংস্করণ) 🚀
@@ -215,6 +242,8 @@ func (pc *ProductController) Store(c *core.Context) {
 
 ### 🌟 প্রধান সুবিধাসমূহ
 - **মাল্টি-ডাটাবেজ সাপোর্ট**: MySQL, PostgreSQL (`github.com/lib/pq`) এবং Pure-Go SQLite (`github.com/glebarez/go-sqlite`, কোনো **CGO লাগে না**)।
+- **ডাটাবেজ পেজিনেশন ইঞ্জিন (`Paginate`)**: বিল্ট-ইন পেজিনেশন হেল্পার যা কুয়েরি বিল্ডার ও রিপোজিটরিতে এক ক্লিকে টোটাল, পেজ কাউন্ট ও ডাটা বের করে।
+- **নম্বর থেকে শব্দে রূপান্তর (Number to Words)**: ERP ইনভয়েস ও রিসিটের জন্য শত, হাজার, লাখ, কোটি ও পয়সা সমৃদ্ধ স্বয়ংক্রিয় বাংলা ও ইংরেজি কারেন্সি কনভার্টার।
 - **কনটেক্সট পুলিং (`sync.Pool`)**: জিরো-মেমরি অ্যালোকেশন যা উচ্চ ট্রাফিকেও সার্ভারকে মসৃণ ও দ্রুত রাখে।
 - **ইন-মেমরি ক্যাশ সার্ভিস**: TTL ও `Remember()` প্যাটার্ন সমৃদ্ধ থ্রেড-সেফ ফাস্ট ক্যাশিং।
 - **অ্যাসিনক্রোনাস ব্যাকগ্রাউন্ড কিউ**: ইমেল পাঠানো বা ভারী কাজ ব্যাকগ্রাউন্ডে নন-ব্লকিংভাবে চালানোর ওয়ার্কার পুল।
@@ -236,3 +265,4 @@ go test -v -count=1 ./...
 
 ---
 Made with ❤️ by Mohidul ([atifsoftware](https://github.com/atifsoftware)).
+
