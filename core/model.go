@@ -1,0 +1,242 @@
+package core
+
+import (
+	"errors"
+	"fmt"
+	"reflect"
+	"strconv"
+	"time"
+)
+
+// Model is implemented by every entity struct so the generic Repository
+// knows which table to query. Example:
+//
+//	type Product struct {
+//	    ID    int64  `db:"id"`
+//	    Name  string `db:"name"`
+//	    Price float64 `db:"price"`
+//	}
+//	func (Product) TableName() string { return "products" }
+type Model interface {
+	TableName() string
+}
+
+// Repository is a generic Active-Record-ish accessor: Repository[Product]
+// gives you Find/All/Where/Create/Update/Delete without hand-writing SQL
+// for each entity, similar to NovaFlow PHP's `ProductModel::all()`.
+type Repository[T Model] struct {
+	db *DB
+}
+
+func NewRepository[T Model](db *DB) *Repository[T] {
+	return &Repository[T]{db: db}
+}
+
+func (r *Repository[T]) tableName() string {
+	var zero T
+	return zero.TableName()
+}
+
+// Find returns the row with the given primary key, or (nil, nil) if not found.
+func (r *Repository[T]) Find(id interface{}) (*T, error) {
+	row, err := r.db.Table(r.tableName()).Where("id", "=", id).First()
+	if err != nil || row == nil {
+		return nil, err
+	}
+	var entity T
+	if err := mapToStruct(row, &entity); err != nil {
+		return nil, err
+	}
+	return &entity, nil
+}
+
+// All returns every row in the table.
+func (r *Repository[T]) All() ([]T, error) {
+	rows, err := r.db.Table(r.tableName()).Get()
+	if err != nil {
+		return nil, err
+	}
+	return rowsToStructs[T](rows)
+}
+
+// Where starts a filtered query that still returns typed structs via .Get().
+type TypedQuery[T Model] struct {
+	qb *QueryBuilder
+}
+
+func (r *Repository[T]) Where(column, op string, value interface{}) *TypedQuery[T] {
+	return &TypedQuery[T]{qb: r.db.Table(r.tableName()).Where(column, op, value)}
+}
+
+func (tq *TypedQuery[T]) Where(column, op string, value interface{}) *TypedQuery[T] {
+	tq.qb.Where(column, op, value)
+	return tq
+}
+
+func (tq *TypedQuery[T]) OrderBy(column, dir string) *TypedQuery[T] {
+	tq.qb.OrderBy(column, dir)
+	return tq
+}
+
+func (tq *TypedQuery[T]) Limit(n int) *TypedQuery[T] {
+	tq.qb.Limit(n)
+	return tq
+}
+
+func (tq *TypedQuery[T]) Get() ([]T, error) {
+	rows, err := tq.qb.Get()
+	if err != nil {
+		return nil, err
+	}
+	return rowsToStructs[T](rows)
+}
+
+func (tq *TypedQuery[T]) First() (*T, error) {
+	row, err := tq.qb.First()
+	if err != nil || row == nil {
+		return nil, err
+	}
+	var entity T
+	if err := mapToStruct(row, &entity); err != nil {
+		return nil, err
+	}
+	return &entity, nil
+}
+
+// Create inserts entity (skipping a zero-value "id" field so MySQL can
+// auto-increment it) and returns the new ID.
+func (r *Repository[T]) Create(entity *T) (int64, error) {
+	data := structToMap(entity, true)
+	return r.db.Table(r.tableName()).Insert(data)
+}
+
+// Update saves all fields of entity back to its row, matched by "id".
+func (r *Repository[T]) Update(entity *T) (int64, error) {
+	data := structToMap(entity, false)
+	id, ok := data["id"]
+	if !ok {
+		return 0, errors.New("model: Update requires an id field")
+	}
+	delete(data, "id")
+	return r.db.Table(r.tableName()).Where("id", "=", id).Update(data)
+}
+
+// Delete removes the row with the given id.
+func (r *Repository[T]) Delete(id interface{}) (int64, error) {
+	return r.db.Table(r.tableName()).Where("id", "=", id).Delete()
+}
+
+// --- reflection helpers -----------------------------------------------
+
+func rowsToStructs[T Model](rows []map[string]interface{}) ([]T, error) {
+	out := make([]T, 0, len(rows))
+	for _, row := range rows {
+		var entity T
+		if err := mapToStruct(row, &entity); err != nil {
+			return nil, err
+		}
+		out = append(out, entity)
+	}
+	return out, nil
+}
+
+// mapToStruct copies a DB row (column -> value) into a struct using `db:"col"`
+// tags, converting common SQL driver types (string/[]byte/int64/float64/time)
+// into the destination field's Go type.
+func mapToStruct(row map[string]interface{}, dest interface{}) error {
+	v := reflect.ValueOf(dest).Elem()
+	t := v.Type()
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		col := field.Tag.Get("db")
+		if col == "" || col == "-" {
+			continue
+		}
+		raw, ok := row[col]
+		if !ok || raw == nil {
+			continue
+		}
+		fv := v.Field(i)
+		if err := setField(fv, raw); err != nil {
+			return fmt.Errorf("field %s: %w", field.Name, err)
+		}
+	}
+	return nil
+}
+
+func setField(fv reflect.Value, raw interface{}) error {
+	switch fv.Kind() {
+	case reflect.String:
+		fv.SetString(toString(raw))
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		fv.SetInt(ToInt64(raw))
+	case reflect.Float32, reflect.Float64:
+		switch n := raw.(type) {
+		case float64:
+			fv.SetFloat(n)
+		case string:
+			f, _ := strconv.ParseFloat(n, 64)
+			fv.SetFloat(f)
+		default:
+			fv.SetFloat(0)
+		}
+	case reflect.Bool:
+		switch n := raw.(type) {
+		case bool:
+			fv.SetBool(n)
+		case int64:
+			fv.SetBool(n != 0)
+		case string:
+			b, _ := strconv.ParseBool(n)
+			fv.SetBool(b)
+		}
+	case reflect.Struct:
+		if fv.Type() == reflect.TypeOf(time.Time{}) {
+			switch n := raw.(type) {
+			case time.Time:
+				fv.Set(reflect.ValueOf(n))
+			case string:
+				if ts, err := time.Parse("2006-01-02 15:04:05", n); err == nil {
+					fv.Set(reflect.ValueOf(ts))
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func toString(raw interface{}) string {
+	switch n := raw.(type) {
+	case string:
+		return n
+	case []byte:
+		return string(n)
+	default:
+		return fmt.Sprintf("%v", n)
+	}
+}
+
+// structToMap converts a struct into a column->value map using `db:"col"`
+// tags. When skipEmptyID is true, an "id" field left at its zero value is
+// omitted so INSERT lets the database auto-increment it.
+func structToMap(entity interface{}, skipEmptyID bool) map[string]interface{} {
+	v := reflect.ValueOf(entity)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	t := v.Type()
+	out := map[string]interface{}{}
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		col := field.Tag.Get("db")
+		if col == "" || col == "-" {
+			continue
+		}
+		fv := v.Field(i)
+		if col == "id" && skipEmptyID && fv.IsZero() {
+			continue
+		}
+		out[col] = fv.Interface()
+	}
+	return out
+}

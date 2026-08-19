@@ -1,0 +1,10 @@
+.env
+novaflow
+novaflow-cli
+storage/logs/*
+storage/cache/*
+storage/uploads/*
+!storage/logs/.gitkeep
+!storage/cache/.gitkeep
+!storage/uploads/.gitkeep
+*.exe
