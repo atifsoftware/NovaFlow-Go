@@ -18,6 +18,7 @@
 8. **Struct-Tag Validation:** Perform declarative validator tag parsing (`validate:"required,email,min=6"`) utilizing Go reflection.
 9. **Authentication Modules:** Cookie-based session authentication for web routes, and HS256 JWT-based token authentication for REST APIs.
 10. **Rate Limiting Middleware:** Simple memory-based IP rate limiter to protect endpoints from brute-force attacks.
+11. **Unified AI Service Wrapper:** Zero-dependency built-in adapter supporting Google Gemini and OpenAI REST APIs for text generation and content moderation safety checks.
 
 ---
 
@@ -165,7 +166,20 @@ CREATE TABLE IF NOT EXISTS products (
 DROP TABLE IF EXISTS products;
 ```
 
----
+### 3. AI Service (`app.AI`)
+Call text completions or asynchronous content safety checks anywhere in your controllers:
+
+```go
+// 1. Generate text or complete prompts
+response, err := app.AI.GenerateText("Write a short tagline for a tech company.")
+
+// 2. Perform safety moderation checks on user submissions
+isSafe, err := app.AI.ModerateContent(c.Input("comment"))
+if !isSafe {
+    c.JSONError(http.StatusBadRequest, "Content flagged by AI safety filters.")
+    return
+}
+```
 
 ---
 
@@ -180,6 +194,7 @@ DROP TABLE IF EXISTS products;
 - **মাইগ্রেশন ও রোলব্যাক**: পিএইচপি সংস্করণের মতোই উন্নত রোলব্যাক (`migrate:rollback`) সিস্টেম।
 - **স্ট্রাকচার্ড লগিং**: স্ট্যান্ডার্ড `log/slog` সমৃদ্ধ প্রোডাকশন রেডি জেসন ও টেক্সট লগিং।
 - **রিফ্লেক্টিভ ভ্যালিডেশন**: গো স্ট্রাক্ট ফিল্ডে `validate:"required"` ট্যাগের সহজ ব্যবহার।
+- **ইউনিফাইড এআই মডিউল (AI Service)**: গুগল জেমিনি ও ওপেনএআই-এর এআই টেক্সট জেনারেশন ও কন্টেন্ট মডারেশন সার্ভিস সরাসরি ব্যবহারের সুবিধা।
 
 ---
 
