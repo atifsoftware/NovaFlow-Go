@@ -1,10 +1,19 @@
-# NovaFlow (Go Edition) 🚀
+<p align="center">
+  <img src="public/logo.png" width="220" alt="NovaFlow Go Logo" style="border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" />
+</p>
+
+<h1 align="center">NovaFlow (Go Edition) 🚀</h1>
+
+<p align="center">
+  <strong>Ultra-High Performance, Dependency-Minimal Go MVC Web Framework</strong>
+</p>
 
 [বাংলা বিবরণ নিচে দেওয়া হয়েছে]
 
 **NovaFlow (Go Edition)** is a lightweight, ultra-high-performance Go MVC web framework. It is the Go sibling of the [NovaFlow PHP MVC framework](https://github.com/atifsoftware/NovaFlow), engineered to deliver blazing speed, architectural clarity, and zero-bloat standard-library design.
 
 ---
+
 
 ## ⚡ Performance & Benchmarks
 
