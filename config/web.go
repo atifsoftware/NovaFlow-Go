@@ -14,6 +14,11 @@ func registerWebRoutes(app *core.App, kernel *middleware.Kernel) {
 	r.Get("/", home.Index)
 	r.Get("/health", home.Health)
 
+	// API Interactive Swagger Documentation routes
+	docs := controllers.NewDocsController()
+	r.Get("/docs", docs.ShowDocs)
+	r.Get("/openapi.json", docs.OpenAPISpec)
+
 	// Web (session-based) routes
 	if app.Auth != nil {
 		authCtrl := controllers.NewAuthController(app.Auth)
