@@ -6,8 +6,13 @@ import (
 	"strings"
 )
 
-// DB wraps *sql.DB and exposes a fluent, PDO-style query builder
-// (DB.Table("users").Where("email", "=", x).First()).
+// SQLQueryer defines common database operations shared by *sql.DB and *sql.Tx.
+type SQLQueryer interface {
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+	Exec(query string, args ...interface{}) (sql.Result, error)
+}
+
+// DB wraps *sql.DB and exposes a fluent, PDO-style query builder.
 type DB struct {
 	Conn *sql.DB
 }
@@ -23,9 +28,46 @@ func OpenDB(driver, dsn string) (*DB, error) {
 	return &DB{Conn: conn}, nil
 }
 
-// Table starts a new query builder chain against the given table.
+// Begin starts a new database transaction.
+func (db *DB) Begin() (*Tx, error) {
+	tx, err := db.Conn.Begin()
+	if err != nil {
+		return nil, err
+	}
+	return &Tx{tx: tx}, nil
+}
+
+// Table starts a new query builder chain against the given table using the connection.
 func (db *DB) Table(name string) *QueryBuilder {
-	return &QueryBuilder{db: db, table: name}
+	return &QueryBuilder{
+		db:      db,
+		queryer: db.Conn,
+		table:   name,
+	}
+}
+
+// Tx wraps *sql.Tx and provides fluent QueryBuilder access.
+type Tx struct {
+	tx *sql.Tx
+}
+
+// Commit commits the active transaction.
+func (tx *Tx) Commit() error {
+	return tx.tx.Commit()
+}
+
+// Rollback rolls back the active transaction.
+func (tx *Tx) Rollback() error {
+	return tx.tx.Rollback()
+}
+
+// Table starts a new query builder chain against the given table within the transaction.
+func (tx *Tx) Table(name string) *QueryBuilder {
+	return &QueryBuilder{
+		db:      nil,
+		queryer: tx.tx,
+		table:   name,
+	}
 }
 
 type whereClause struct {
@@ -39,6 +81,7 @@ type whereClause struct {
 // results are always safe from SQL injection.
 type QueryBuilder struct {
 	db       *DB
+	queryer  SQLQueryer
 	table    string
 	columns  []string
 	wheres   []whereClause
@@ -77,8 +120,27 @@ func (q *QueryBuilder) WhereIn(column string, values []interface{}) *QueryBuilde
 	return q
 }
 
+// Join appends a raw join clause (e.g. Join("INNER JOIN categories ON products.category_id = categories.id")).
 func (q *QueryBuilder) Join(clause string) *QueryBuilder {
 	q.joins = append(q.joins, clause)
+	return q
+}
+
+// InnerJoin appends an INNER JOIN clause to the query.
+func (q *QueryBuilder) InnerJoin(table, first, op, second string) *QueryBuilder {
+	q.joins = append(q.joins, fmt.Sprintf("INNER JOIN %s ON %s %s %s", table, first, op, second))
+	return q
+}
+
+// LeftJoin appends a LEFT JOIN clause to the query.
+func (q *QueryBuilder) LeftJoin(table, first, op, second string) *QueryBuilder {
+	q.joins = append(q.joins, fmt.Sprintf("LEFT JOIN %s ON %s %s %s", table, first, op, second))
+	return q
+}
+
+// RightJoin appends a RIGHT JOIN clause to the query.
+func (q *QueryBuilder) RightJoin(table, first, op, second string) *QueryBuilder {
+	q.joins = append(q.joins, fmt.Sprintf("RIGHT JOIN %s ON %s %s %s", table, first, op, second))
 	return q
 }
 
@@ -95,6 +157,31 @@ func (q *QueryBuilder) Limit(n int) *QueryBuilder {
 func (q *QueryBuilder) Offset(n int) *QueryBuilder {
 	q.offsetN = n
 	return q
+}
+
+// Clone creates a deep copy of the QueryBuilder state.
+func (q *QueryBuilder) Clone() *QueryBuilder {
+	clone := &QueryBuilder{
+		db:       q.db,
+		queryer:  q.queryer,
+		table:    q.table,
+		orderBy:  q.orderBy,
+		limitN:   q.limitN,
+		offsetN:  q.offsetN,
+	}
+	if len(q.columns) > 0 {
+		clone.columns = make([]string, len(q.columns))
+		copy(clone.columns, q.columns)
+	}
+	if len(q.wheres) > 0 {
+		clone.wheres = make([]whereClause, len(q.wheres))
+		copy(clone.wheres, q.wheres)
+	}
+	if len(q.joins) > 0 {
+		clone.joins = make([]string, len(q.joins))
+		copy(clone.joins, q.joins)
+	}
+	return clone
 }
 
 func (q *QueryBuilder) buildSelect() (string, []interface{}) {
@@ -132,7 +219,7 @@ func (q *QueryBuilder) buildSelect() (string, []interface{}) {
 // Get executes the query and returns every row as a map[string]interface{}.
 func (q *QueryBuilder) Get() ([]map[string]interface{}, error) {
 	sqlStr, args := q.buildSelect()
-	rows, err := q.db.Conn.Query(sqlStr, args...)
+	rows, err := q.queryer.Query(sqlStr, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +265,7 @@ func (q *QueryBuilder) Insert(data map[string]interface{}) (int64, error) {
 		args = append(args, v)
 	}
 	sqlStr := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", q.table, strings.Join(cols, ", "), strings.Join(placeholders, ", "))
-	res, err := q.db.Conn.Exec(sqlStr, args...)
+	res, err := q.queryer.Exec(sqlStr, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -205,7 +292,7 @@ func (q *QueryBuilder) Update(data map[string]interface{}) (int64, error) {
 			args = append(args, w.args...)
 		}
 	}
-	res, err := q.db.Conn.Exec(sqlStr, args...)
+	res, err := q.queryer.Exec(sqlStr, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -226,11 +313,25 @@ func (q *QueryBuilder) Delete() (int64, error) {
 			args = append(args, w.args...)
 		}
 	}
-	res, err := q.db.Conn.Exec(sqlStr, args...)
+	res, err := q.queryer.Exec(sqlStr, args...)
 	if err != nil {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// Pluck returns a slice containing only the values of the requested column.
+func (q *QueryBuilder) Pluck(column string) ([]interface{}, error) {
+	q.columns = []string{column}
+	rows, err := q.Get()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]interface{}, len(rows))
+	for i, r := range rows {
+		out[i] = r[column]
+	}
+	return out, nil
 }
 
 // Raw runs an arbitrary parameterized SELECT and returns rows as maps.
