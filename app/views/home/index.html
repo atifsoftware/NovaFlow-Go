@@ -1,7 +1,632 @@
 {{define "content"}}
-<div class="p-5 bg-white rounded shadow-sm">
-    <h1 class="mb-3">Welcome to {{.Title}}</h1>
-    <p class="text-muted">A lightweight, dependency-free Go MVC framework — routing, ORM, REST API, JWT/session auth and CLI tooling, built from scratch.</p>
-    <a href="/api/v1/products" class="btn btn-primary">Try the API</a>
-</div>
+<style>
+    /* Hero Section */
+    .hero-section {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 80px 24px;
+        display: grid;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 60px;
+        align-items: center;
+    }
+
+    @media (max-width: 968px) {
+        .hero-section {
+            grid-template-columns: 1fr;
+            padding: 40px 24px;
+            gap: 40px;
+        }
+    }
+
+    .hero-content h1 {
+        font-size: 54px;
+        font-weight: 800;
+        line-height: 1.1;
+        margin-bottom: 24px;
+        background: linear-gradient(135deg, #ffffff 30%, #93c5fd 70%, #c084fc 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .hero-content p {
+        font-size: 18px;
+        color: var(--text-muted);
+        margin-bottom: 36px;
+        line-height: 1.6;
+    }
+
+    .hero-actions {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 40px;
+    }
+
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 28px;
+        border-radius: 10px;
+        font-size: 16px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.2s;
+        cursor: pointer;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, var(--primary), var(--accent));
+        color: white;
+        box-shadow: 0 4px 20px rgba(59, 130, 246, 0.3);
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 30px rgba(59, 130, 246, 0.45);
+    }
+
+    .btn-secondary {
+        background-color: var(--card-bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+        background-color: #1f2937;
+        border-color: #374151;
+        transform: translateY(-2px);
+    }
+
+    .cmd-badge {
+        display: inline-flex;
+        align-items: center;
+        background-color: #070a13;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 16px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        color: var(--success);
+    }
+
+    .cmd-badge span {
+        color: var(--text-muted);
+        margin-right: 8px;
+        user-select: none;
+    }
+
+    /* Terminal Simulator */
+    .terminal-card {
+        background-color: #070a13;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .terminal-header {
+        background-color: #111827;
+        padding: 12px 18px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .terminal-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+    }
+
+    .dot-red { background-color: #ef4444; }
+    .dot-yellow { background-color: #f59e0b; }
+    .dot-green { background-color: #10b981; }
+
+    .terminal-title {
+        margin-left: auto;
+        margin-right: auto;
+        font-size: 12px;
+        color: var(--text-muted);
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    .terminal-body {
+        padding: 24px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        color: #93c5fd;
+        overflow-x: auto;
+    }
+
+    .term-prompt {
+        color: var(--success);
+    }
+
+    .term-cmd {
+        color: var(--text);
+    }
+
+    .term-out {
+        color: #cbd5e1;
+        margin: 6px 0 16px 0;
+    }
+
+    /* Bat Utilities Banner */
+    .bat-banner {
+        max-width: 1200px;
+        margin: 0 auto 80px auto;
+        padding: 24px;
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(16, 185, 129, 0.05));
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        border-radius: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 20px;
+    }
+
+    .bat-banner-content h4 {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .bat-banner-content p {
+        font-size: 14px;
+        color: var(--text-muted);
+    }
+
+    .bat-chips {
+        display: flex;
+        gap: 12px;
+    }
+
+    .bat-chip {
+        background-color: rgba(3, 7, 18, 0.6);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 16px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        color: var(--text);
+    }
+
+    /* Features Grid */
+    .features-section {
+        max-width: 1200px;
+        margin: 0 auto 100px auto;
+        padding: 0 24px;
+        scroll-margin-top: 100px;
+    }
+
+    .section-header {
+        text-align: center;
+        max-width: 600px;
+        margin: 0 auto 60px auto;
+    }
+
+    .section-header h2 {
+        font-size: 36px;
+        font-weight: 800;
+        margin-bottom: 16px;
+        color: var(--text);
+    }
+
+    .section-header p {
+        color: var(--text-muted);
+        font-size: 16px;
+    }
+
+    .features-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 24px;
+    }
+
+    .feature-card {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 32px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .feature-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(400px circle at var(--x, 0px) var(--y, 0px), rgba(99, 102, 241, 0.08), transparent 80%);
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+    }
+
+    .feature-card:hover::before {
+        opacity: 1;
+    }
+
+    .feature-card:hover {
+        transform: translateY(-4px);
+        border-color: #374151;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .feature-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        background-color: rgba(59, 130, 246, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 24px;
+        color: var(--primary);
+        font-size: 20px;
+    }
+
+    .feature-card:nth-child(2n) .feature-icon {
+        background-color: rgba(99, 102, 241, 0.1);
+        color: var(--accent);
+    }
+
+    .feature-card:nth-child(3n) .feature-icon {
+        background-color: rgba(16, 185, 129, 0.1);
+        color: var(--success);
+    }
+
+    .feature-card h3 {
+        font-size: 20px;
+        font-weight: 700;
+        margin-bottom: 12px;
+        color: var(--text);
+    }
+
+    .feature-card p {
+        color: var(--text-muted);
+        font-size: 15px;
+        line-height: 1.6;
+    }
+
+    /* Architecture Grid */
+    .architecture-section {
+        max-width: 1200px;
+        margin: 0 auto 100px auto;
+        padding: 0 24px;
+        scroll-margin-top: 100px;
+    }
+
+    .flow-diagram {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 40px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 20px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    }
+
+    @media (max-width: 768px) {
+        .flow-diagram {
+            flex-direction: column;
+            text-align: center;
+        }
+    }
+
+    .flow-step {
+        background-color: #070a13;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px 24px;
+        font-weight: 600;
+        color: var(--text);
+        flex: 1;
+        min-width: 140px;
+        box-shadow: inset 0 2px 4px rgba(255,255,255,0.02);
+    }
+
+    .flow-arrow {
+        color: var(--primary);
+        font-size: 24px;
+        font-weight: 800;
+    }
+
+    @media (max-width: 768px) {
+        .flow-arrow {
+            transform: rotate(90deg);
+        }
+    }
+
+    /* Code Preview Area */
+    .code-tabs {
+        max-width: 1200px;
+        margin: 0 auto 100px auto;
+        padding: 0 24px;
+        scroll-margin-top: 100px;
+    }
+
+    .code-grid {
+        display: grid;
+        grid-template-columns: 1.5fr 1fr;
+        gap: 30px;
+    }
+
+    @media (max-width: 968px) {
+        .code-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .code-info h3 {
+        font-size: 28px;
+        font-weight: 800;
+        margin-bottom: 16px;
+        color: var(--text);
+    }
+
+    .code-info p {
+        color: var(--text-muted);
+        font-size: 16px;
+        line-height: 1.6;
+        margin-bottom: 24px;
+    }
+
+    .code-list {
+        list-style: none;
+    }
+
+    .code-list-item {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        margin-bottom: 16px;
+    }
+
+    .code-list-check {
+        color: var(--success);
+        font-weight: 800;
+    }
+
+    .code-list-content strong {
+        color: var(--text);
+    }
+
+    .code-list-content p {
+        font-size: 14px;
+        margin: 0;
+    }
+</style>
+
+<!-- Hero Section -->
+<section class="hero-section">
+    <div class="hero-content">
+        <h1>High-Performance MVC Framework for Go</h1>
+        <p>NovaFlow Go is a lightning-fast, dependency-free MVC web framework. Featuring central Middleware Kernels, parameters-bound QueryBuilder ORM, struct-tag validation, structured logging, local panic debugger, and database migrations batch rollbacks.</p>
+        <div class="hero-actions">
+            <a href="/api/v1/products" class="btn btn-primary">🚀 Try the API</a>
+            <a href="#features" class="btn btn-secondary">Explore Features</a>
+            <div class="cmd-badge">
+                <span>$</span> go run main.go
+            </div>
+        </div>
+    </div>
+    
+    <div class="terminal-card">
+        <div class="terminal-header">
+            <div class="terminal-dot dot-red"></div>
+            <div class="terminal-dot dot-yellow"></div>
+            <div class="terminal-dot dot-green"></div>
+            <div class="terminal-title">novaflow-cli</div>
+        </div>
+        <div class="terminal-body">
+            <span class="term-prompt">C:\novaflow-go&gt;</span> <span class="term-cmd">go run ./cli migrate</span>
+            <div class="term-out">
+NovaFlow Migrator
+-----------------
+Migrated: 20260819131015_create_users_table.sql (Batch: 1)
+Migrated: 20260819131024_create_products_table.sql (Batch: 1)
+Status: Database is up to date.
+            </div>
+            
+            <span class="term-prompt">C:\novaflow-go&gt;</span> <span class="term-cmd">go run ./cli make:controller product</span>
+            <div class="term-out">
+Scaffolder Assistant
+--------------------
+Created: app/controllers/product_controller.go
+            </div>
+
+            <span class="term-prompt">C:\novaflow-go&gt;</span> <span class="term-cmd">go run ./cli --health</span>
+            <div class="term-out" style="margin-bottom: 0;">
+APP_ENV:      local
+APP_PORT:     8080
+Database:     OK
+Status:       healthy
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Windows Bat Utilities Banner -->
+<section class="bat-banner">
+    <div class="bat-banner-content">
+        <h4>⚡ Windows Batch Utilities Included</h4>
+        <p>Double-click to automatically configure, run, and stop your background server process safely.</p>
+    </div>
+    <div class="bat-chips">
+        <div class="bat-chip">run.bat</div>
+        <div class="bat-chip">stop.bat</div>
+    </div>
+</section>
+
+<!-- Features Grid -->
+<section id="features" class="features-section">
+    <div class="section-header">
+        <h2>Modern Core Engines</h2>
+        <p>NovaFlow Go provides robust, zero-dependency built-in modules designed for production grade stability and clean code layout.</p>
+    </div>
+    
+    <div class="features-grid">
+        <div class="feature-card">
+            <div class="feature-icon">🛡️</div>
+            <h3>Middleware Kernel</h3>
+            <p>Define global, route groups (web, api), and route-level aliases in a centralized `app/middleware/kernel.go` class. Decouples middleware implementations from route mappings.</p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">📊</div>
+            <h3>ActiveRecord ORM</h3>
+            <p>Parameter-bound QueryBuilder securing your SQL execution. Support for full Transaction (Tx) commit/rollback, Left/Right/Inner Joins, Deep Cloning, and column Plucking.</p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">🚨</div>
+            <h3>Intelligent Debugger</h3>
+            <p>Local panic recovery interceptor rendering visual dark-themed HTML screens. Highlights source context lines, filters sensitive credentials, and generates quick search tools.</p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">✓</div>
+            <h3>Struct Validation</h3>
+            <p>Perform validation on struct fields using Go reflection and struct tags. Supports required fields, email parsing, numeric parameters, string limits and number range restrictions.</p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">📝</div>
+            <h3>Structured logging</h3>
+            <p>Utilizes native Go standard `log/slog`. Autodetects local text formatted environment versus cloud JSON log specifications, rendering clean HTTP response metrics.</p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">📂</div>
+            <h3>Batch Migrations</h3>
+            <p>Robust DB schema migrations manager supporting UP and DOWN block compilation. Rollback single increments or groups of migrations cleanly.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Architecture Section -->
+<section id="architecture" class="architecture-section">
+    <div class="section-header">
+        <h2>Clean Request Lifecycle</h2>
+        <p>Follow a predictable, high-performance MVC workflow designed to process incoming requests cleanly and serve responses instantly.</p>
+    </div>
+    <div class="flow-diagram">
+        <div class="flow-step">1. HTTP Request</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">2. Global Kernel MW</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">3. Router Dispatcher</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">4. Route Group MW</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">5. Controller Action</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">6. DB ORM / View</div>
+    </div>
+</section>
+
+<!-- Code Preview Area -->
+<section id="getting-started" class="code-tabs">
+    <div class="code-grid">
+        <div class="terminal-card">
+            <div class="terminal-header">
+                <div class="terminal-dot dot-red"></div>
+                <div class="terminal-dot dot-yellow"></div>
+                <div class="terminal-dot dot-green"></div>
+                <div class="terminal-title">app/controllers/product_controller.go</div>
+            </div>
+            <div class="terminal-body" style="color: #a78bfa; padding: 20px;">
+<pre style="border: none; background: transparent; padding: 0; margin: 0; color: inherit; font-size: 13px;">
+<span style="color: #fca5a5;">package</span> controllers
+
+<span style="color: #fca5a5;">import</span> (
+    <span style="color: #6ee7b7;">"novaflow/core"</span>
+)
+
+<span style="color: #fca5a5;">func</span> (ctl *ProductController) Store(c *core.Context) {
+    <span style="color: #9ca3af;">// 1. Bind request schema using struct tags</span>
+    <span style="color: #fca5a5;">var</span> req CreateProductRequest
+    <span style="color: #fca5a5;">if</span> err := c.BindJSON(&req); err != <span style="color: #fca5a5;">nil</span> {
+        c.JSONError(<span style="color: #6ee7b7;">400</span>, <span style="color: #6ee7b7;">"Invalid JSON payload"</span>)
+        <span style="color: #fca5a5;">return</span>
+    }
+
+    <span style="color: #9ca3af;">// 2. Validate struct against tags</span>
+    validator := core.NewValidator(<span style="color: #fca5a5;">nil</span>).ValidateStruct(req)
+    <span style="color: #fca5a5;">if</span> !validator.Passes() {
+        c.JSON(<span style="color: #6ee7b7;">422</span>, map[string]interface{}{<span style="color: #6ee7b7;">"errors"</span>: validator.Errors()})
+        <span style="color: #fca5a5;">return</span>
+    }
+
+    <span style="color: #9ca3af;">// 3. Database operations with ORM QueryBuilder</span>
+    newID, err := ctl.db.Table(<span style="color: #6ee7b7;">"products"</span>).Insert(map[string]interface{}{
+        <span style="color: #6ee7b7;">"name"</span>:  req.Name,
+        <span style="color: #6ee7b7;">"price"</span>: req.Price,
+    })
+
+    c.JSONSuccess(map[string]interface{}{<span style="color: #6ee7b7;">"id"</span>: newID})
+}
+</pre>
+            </div>
+        </div>
+        
+        <div class="code-info">
+            <h3>Designed for Clean MVC Workflows</h3>
+            <p>NovaFlow Go handles payload bindings, structured reflections, and database calls sequentially, keeping controllers clean and testing straightforward.</p>
+            
+            <ul class="code-list">
+                <li class="code-list-item">
+                    <span class="code-list-check">✔</span>
+                    <div class="code-list-content">
+                        <strong>Strong Schema Bindings</strong>
+                        <p>Automatically maps HTTP request bodies directly to typed Go structures.</p>
+                    </div>
+                </li>
+                <li class="code-list-item">
+                    <span class="code-list-check">✔</span>
+                    <div class="code-list-content">
+                        <strong>Fluent Database Execution</strong>
+                        <p>Write raw-less query conditions, transaction blocks, and mappings.</p>
+                    </div>
+                </li>
+                <li class="code-list-item">
+                    <span class="code-list-check">✔</span>
+                    <div class="code-list-content">
+                        <strong>Structured JSON Output</strong>
+                        <p>Consistent API response shapes (`{success: true, data: ...}`) built in.</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<script>
+    // Subtle hover animation calculations for features cards
+    const cards = document.querySelectorAll('.feature-card');
+    cards.forEach(card => {
+        card.addEventListener('mousemove', e => {
+            const rect = card.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            card.style.setProperty('--x', `${x}px`);
+            card.style.setProperty('--y', `${y}px`);
+        });
+    });
+</script>
 {{end}}
