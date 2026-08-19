@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"novaflow/app/middleware"
 	"novaflow/config"
 	"novaflow/core"
 )
@@ -84,7 +85,7 @@ func cmdHealth() {
 
 func cmdRoutes() {
 	app := core.NewApp(".env", "app/views")
-	config.RegisterRoutes(app)
+	config.RegisterRoutes(app, middleware.NewKernel(app))
 	routes := app.Router.Routes()
 	sort.Slice(routes, func(i, j int) bool { return routes[i].Path < routes[j].Path })
 	fmt.Printf("%-8s %s\n", "METHOD", "PATH")

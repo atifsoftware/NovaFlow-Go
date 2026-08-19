@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"novaflow/app/middleware"
+	"novaflow/config"
 	"novaflow/core"
 )
 
@@ -90,3 +92,15 @@ func TestJWTRoundTrip(t *testing.T) {
 		t.Fatalf("expected sub=1, got %v", claims["sub"])
 	}
 }
+
+func TestRegisterRoutesWithKernel(t *testing.T) {
+	app := core.NewApp("../.env", "")
+	kernel := middleware.NewKernel(app)
+	config.RegisterRoutes(app, kernel)
+
+	routes := app.Router.Routes()
+	if len(routes) == 0 {
+		t.Fatal("expected routes to be registered by the kernel")
+	}
+}
+

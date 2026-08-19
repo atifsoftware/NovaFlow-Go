@@ -74,8 +74,10 @@ func NewApp(envPath, viewsDir string) *App {
 
 // Run starts the HTTP server, wrapping the router with Recover + Logger
 // global middleware so a panicking handler never takes the process down.
-func (a *App) Run(addr string) error {
-	handler := withGlobalMiddleware(a.Router, Recover(), Logger())
+// Run starts the HTTP server, wrapping the router with the provided
+// global middleware chain so requests are logged, recovered, etc.
+func (a *App) Run(addr string, globalMw ...Middleware) error {
+	handler := withGlobalMiddleware(a.Router, globalMw...)
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      handler,

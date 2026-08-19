@@ -2,11 +2,12 @@ package config
 
 import (
 	"novaflow/app/controllers"
+	"novaflow/app/middleware"
 	"novaflow/core"
 )
 
 // registerWebRoutes registers session/cookie-based routes.
-func registerWebRoutes(app *core.App) {
+func registerWebRoutes(app *core.App, kernel *middleware.Kernel) {
 	r := app.Router
 
 	home := controllers.NewHomeController()
@@ -20,8 +21,10 @@ func registerWebRoutes(app *core.App) {
 		r.Post("/login", authCtrl.Login)
 		r.Post("/logout", authCtrl.Logout)
 
-		r.Group(core.GroupOptions{Middleware: []core.Middleware{core.Auth(app.Auth)}}, func(r *core.Router) {
-			r.Get("/dashboard", authCtrl.Dashboard)
-		})
+		if authMw := kernel.Resolve("auth"); authMw != nil {
+			r.Group(core.GroupOptions{Middleware: []core.Middleware{authMw}}, func(r *core.Router) {
+				r.Get("/dashboard", authCtrl.Dashboard)
+			})
+		}
 	}
 }
