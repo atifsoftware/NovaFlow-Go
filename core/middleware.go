@@ -2,12 +2,13 @@ package core
 
 import (
 	"fmt"
-	"log/slog"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/exp/slog"
 )
 
 // responseCapture wraps http.ResponseWriter to capture the status code written by a handler.

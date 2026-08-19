@@ -13,7 +13,7 @@ echo Stopping NovaFlow Go Server on port %PORT%...
 set FOUND=0
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr :%PORT% ^| findstr LISTENING') do (
     taskkill /f /pid %%a
-    echo Server process (PID: %%a) stopped successfully.
+    echo Server process PID %%a stopped successfully.
     set FOUND=1
 )
 

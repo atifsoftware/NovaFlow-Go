@@ -3,9 +3,10 @@ package core
 import (
 	"fmt"
 	"html/template"
-	"log/slog"
 	"net/http"
 	"time"
+
+	"golang.org/x/exp/slog"
 
 	_ "github.com/go-sql-driver/mysql"
 )

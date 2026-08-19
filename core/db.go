@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // SQLQueryer defines common database operations shared by *sql.DB and *sql.Tx.
@@ -25,6 +26,12 @@ func OpenDB(driver, dsn string) (*DB, error) {
 	if err := conn.Ping(); err != nil {
 		return nil, err
 	}
+
+	// Optimize connection pooling for production load
+	conn.SetMaxOpenConns(100)
+	conn.SetMaxIdleConns(10)
+	conn.SetConnMaxLifetime(time.Hour)
+
 	return &DB{Conn: conn}, nil
 }
 

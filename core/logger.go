@@ -1,7 +1,7 @@
 package core
 
 import (
-	"log/slog"
+	"golang.org/x/exp/slog"
 	"os"
 	"strings"
 )
