@@ -3,9 +3,11 @@ package core
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -190,4 +192,72 @@ func RenderStandalone(w http.ResponseWriter, tplText string, data interface{}) e
 	}
 	return t.Execute(w, data)
 }
+
+// DownloadCSV writes headers and rows to response with attachment header.
+func (c *Context) DownloadCSV(filename string, headers []string, rows [][]interface{}) error {
+	if !strings.HasSuffix(strings.ToLower(filename), ".csv") {
+		filename += ".csv"
+	}
+	c.Writer.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	c.Writer.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	c.Writer.WriteHeader(http.StatusOK)
+	return ExportCSV(c.Writer, headers, rows)
+}
+
+// DownloadXLSX writes an Excel workbook to response with attachment header.
+func (c *Context) DownloadXLSX(filename, sheetName string, headers []string, rows [][]interface{}) error {
+	if !strings.HasSuffix(strings.ToLower(filename), ".xlsx") {
+		filename += ".xlsx"
+	}
+	bytes, err := ExportXLSX(sheetName, headers, rows)
+	if err != nil {
+		return err
+	}
+	c.Writer.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Writer.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	c.Writer.WriteHeader(http.StatusOK)
+	_, err = c.Writer.Write(bytes)
+	return err
+}
+
+// DownloadPDF forces a PDF download in the browser.
+func (c *Context) DownloadPDF(filename string, pdfBytes []byte) {
+	if !strings.HasSuffix(strings.ToLower(filename), ".pdf") {
+		filename += ".pdf"
+	}
+	c.Writer.Header().Set("Content-Type", "application/pdf")
+	c.Writer.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	c.Writer.WriteHeader(http.StatusOK)
+	_, _ = c.Writer.Write(pdfBytes)
+}
+
+// StreamPDF displays a PDF inline directly in the browser.
+func (c *Context) StreamPDF(filename string, pdfBytes []byte) {
+	if !strings.HasSuffix(strings.ToLower(filename), ".pdf") {
+		filename += ".pdf"
+	}
+	c.Writer.Header().Set("Content-Type", "application/pdf")
+	c.Writer.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filename))
+	c.Writer.WriteHeader(http.StatusOK)
+	_, _ = c.Writer.Write(pdfBytes)
+}
+
+// UpgradeWebSocket upgrades current HTTP connection to an active WebSocket connection.
+func (c *Context) UpgradeWebSocket(onMessage func(client *WSClient, msg []byte), onClose func(client *WSClient)) (*WSClient, error) {
+	if c.app.WS == nil {
+		return nil, fmt.Errorf("websocket hub not initialized")
+	}
+	return c.app.WS.UpgradeWebSocket(c.Writer, c.Request, onMessage, onClose)
+}
+
+// WS returns the application WebSocket Hub.
+func (c *Context) WS() *WebSocketHub {
+	return c.app.WS
+}
+
+// Events returns the application Event Dispatcher.
+func (c *Context) Events() *EventDispatcher {
+	return c.app.Events
+}
+
 

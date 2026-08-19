@@ -26,6 +26,8 @@ type App struct {
 	AI        *AIService
 	Cache     *Cache
 	Queue     *Queue
+	WS        *WebSocketHub
+	Events    *EventDispatcher
 }
 
 // NewApp loads .env, connects to the database (if DB_HOST is set),
@@ -39,16 +41,22 @@ func NewApp(envPath, viewsDir string) *App {
 		slog.Warn("could not load env file", "path", envPath, "error", err)
 	}
 
+	queue := NewQueue(4, 100)
 	app := &App{
 		Config:    cfg,
 		Container: NewContainer(),
 		AI:        NewAIService(cfg),
 		Cache:     NewCache(time.Minute),
-		Queue:     NewQueue(4, 100),
+		Queue:     queue,
+		WS:        NewWebSocketHub(),
+		Events:    NewEventDispatcher(queue),
 	}
 	app.Container.Bind("ai", app.AI)
 	app.Container.Bind("cache", app.Cache)
 	app.Container.Bind("queue", app.Queue)
+	app.Container.Bind("ws", app.WS)
+	app.Container.Bind("events", app.Events)
+
 
 	driver := cfg.Get("DB_CONNECTION", "")
 	host := cfg.Get("DB_HOST", "")
@@ -173,8 +181,15 @@ func (a *App) GracefulShutdown(srv *http.Server, ctx context.Context) error {
 		}
 	}
 
+	// 5. Close WebSocket Hub connections
+	if a.WS != nil {
+		slog.Info("graceful shutdown: closing active websocket connections...")
+		a.WS.Close()
+	}
+
 	slog.Info("NovaFlow server stopped gracefully with all resources cleaned up")
 	return nil
+
 }
 
 

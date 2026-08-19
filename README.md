@@ -222,16 +222,64 @@ products, err := productRepo.Where("price", ">", 100).Paginate(1, 15)
 c.JSONPaginated(result)
 ```
 
-### 5. Number to Words (English & Bengali) for ERP Billing
+### 6. Excel (XLSX) & CSV Export / Import
 ```go
-// English: "Fifteen Thousand Four Hundred Fifty Taka and Fifty Paisa Only"
-inWordsEn := core.NumberToWordsEn(15450.50)
+// Export & Download XLSX directly in controller:
+headers := []string{"Invoice No", "Customer", "Amount", "Status"}
+rows := [][]interface{}{
+    {"INV-001", "Acme Corp", 5400.00, "Paid"},
+    {"INV-002", "Globex Inc", 12500.50, "Unpaid"},
+}
+_ = c.DownloadXLSX("Invoices_August.xlsx", "Invoices", headers, rows)
 
-// Bengali: "পনের হাজার চার শত পঞ্চাশ টাকা পঞ্চাশ পয়সা মাত্র"
-inWordsBn := core.NumberToWordsBn(15450.50)
+// Or export as CSV:
+_ = c.DownloadCSV("Invoices.csv", headers, rows)
+```
 
-// Custom currency: "One Hundred Dollars and Fifty Cents Only"
-inUSD := core.NumberToWords(100.50, core.NumberToWordsOptions{Currency: "USD"})
+### 7. Professional Invoice & Money Receipt PDF Generation
+```go
+pdfBytes, err := core.GenerateInvoicePDF(core.InvoicePDFData{
+    CompanyName:    "TechFlow Solutions Ltd.",
+    CompanyAddress: "Gulshan-2, Dhaka-1212",
+    InvoiceNumber:  "INV-2026-0042",
+    InvoiceDate:    "2026-08-19",
+    CustomerName:   "Apex Enterprises",
+    Items: []core.InvoiceItem{
+        {Description: "ERP Cloud Setup", Qty: 1, UnitPrice: 50000, Total: 50000},
+    },
+    SubTotal: 50000,
+    Total:    50000,
+})
+
+// Stream or force download in browser:
+c.StreamPDF("INV-2026-0042.pdf", pdfBytes)
+```
+
+### 8. Real-Time WebSockets & Rooms
+```go
+// WebSocket route handler with room subscriptions:
+app.Router.Get("/ws", func(c *core.Context) {
+    client, _ := c.UpgradeWebSocket(func(client *core.WSClient, msg []byte) {
+        if string(msg) == "join:pos" {
+            c.WS().JoinRoom(client, "pos")
+        }
+    }, nil)
+})
+
+// Broadcast live order update to all POS screens:
+c.WS().BroadcastToRoom("pos", "order.created", map[string]int{"order_id": 101})
+```
+
+### 9. Event-Driven Architecture (Pub/Sub)
+```go
+// Register event listener (e.g. in config/events.go or app service):
+app.Events.Listen("invoice.paid", func(payload interface{}) {
+    invoiceID := payload.(int64)
+    // Automatically update stock ledger & trigger email
+})
+
+// Dispatch event anywhere in controllers:
+app.Events.DispatchAsync("invoice.paid", int64(1042))
 ```
 
 ---
@@ -242,6 +290,10 @@ inUSD := core.NumberToWords(100.50, core.NumberToWordsOptions{Currency: "USD"})
 
 ### 🌟 প্রধান সুবিধাসমূহ
 - **মাল্টি-ডাটাবেজ সাপোর্ট**: MySQL, PostgreSQL (`github.com/lib/pq`) এবং Pure-Go SQLite (`github.com/glebarez/go-sqlite`, কোনো **CGO লাগে না**)।
+- **এক্সেল ও সিএসভি ইঞ্জিন (Excel / CSV Export & Import)**: বড় ডাটাবেজ টেবিল থেকে এক ক্লিকে স্টাইলিশ XLSX ও CSV ডাউনলোড এবং ফাইল আপলোড করে ডাটাবেজে ইমপোর্ট করার ক্ষমতা।
+- **ইনভয়েস ও মানি রিসিট PDF জেনারেটর**: পিওর-গো ভিত্তিক সুপার-ফাস্ট প্রফেশনাল ইনভয়েস ও রিসিট PDF তৈরি (বকেয়া, ডিসকাউন্ট, ভ্যাট ও কথায় টাকার হিসাব সহ)।
+- **রিয়েল-টাইম ওয়েবসকেট হাব (WebSockets & Rooms)**: লাইভ পিওএস, নোটিফিকেশন বেল এবং রুমভিত্তিক রিয়েল-টাইম মেসেজিং ইঞ্জিন।
+- **ইভেন্ট-ড্রিভেন আর্কিটেকচার (Pub/Sub Events)**: ডিকাপলড ইভেন্ট ও লিসেনার সিস্টেম (সিঙ্ক্রোনাস ও অ্যাসিনক্রোনাস ব্যাকগ্রাউন্ড কিউ সাপোর্ট সহ)।
 - **ডাটাবেজ পেজিনেশন ইঞ্জিন (`Paginate`)**: বিল্ট-ইন পেজিনেশন হেল্পার যা কুয়েরি বিল্ডার ও রিপোজিটরিতে এক ক্লিকে টোটাল, পেজ কাউন্ট ও ডাটা বের করে।
 - **নম্বর থেকে শব্দে রূপান্তর (Number to Words)**: ERP ইনভয়েস ও রিসিটের জন্য শত, হাজার, লাখ, কোটি ও পয়সা সমৃদ্ধ স্বয়ংক্রিয় বাংলা ও ইংরেজি কারেন্সি কনভার্টার।
 - **কনটেক্সট পুলিং (`sync.Pool`)**: জিরো-মেমরি অ্যালোকেশন যা উচ্চ ট্রাফিকেও সার্ভারকে মসৃণ ও দ্রুত রাখে।
@@ -265,4 +317,5 @@ go test -v -count=1 ./...
 
 ---
 Made with ❤️ by Mohidul ([atifsoftware](https://github.com/atifsoftware)).
+
 
