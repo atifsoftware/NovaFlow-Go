@@ -2,10 +2,21 @@ package core
 
 import (
 	"encoding/json"
+	"errors"
 	"html/template"
 	"net/http"
 	"strconv"
+	"sync"
 )
+
+var contextPool = sync.Pool{
+	New: func() interface{} {
+		return &Context{
+			params: make(map[string]string),
+			store:  make(map[string]interface{}),
+		}
+	},
+}
 
 // Context is passed to every handler and carries the request, response
 // writer, route parameters, and a per-request key/value bag that
@@ -20,13 +31,28 @@ type Context struct {
 }
 
 func newContext(w http.ResponseWriter, r *http.Request, app *App) *Context {
-	return &Context{
-		Writer:  w,
-		Request: r,
-		params:  map[string]string{},
-		store:   map[string]interface{}{},
-		app:     app,
+	return acquireContext(w, r, app)
+}
+
+func acquireContext(w http.ResponseWriter, r *http.Request, app *App) *Context {
+	c := contextPool.Get().(*Context)
+	c.Writer = w
+	c.Request = r
+	c.app = app
+	for k := range c.params {
+		delete(c.params, k)
 	}
+	for k := range c.store {
+		delete(c.store, k)
+	}
+	return c
+}
+
+func releaseContext(c *Context) {
+	c.Writer = nil
+	c.Request = nil
+	c.app = nil
+	contextPool.Put(c)
 }
 
 // Param returns a route parameter, e.g. Param("id") for a route
@@ -51,13 +77,50 @@ func (c *Context) Input(name string) string {
 	return c.Request.FormValue(name)
 }
 
+// BindJSON decodes the incoming JSON request body into the destination struct or map.
+func (c *Context) BindJSON(dest interface{}) error {
+	if c.Request.Body == nil {
+		return errors.New("context: empty request body")
+	}
+	return json.NewDecoder(c.Request.Body).Decode(dest)
+}
+
 // Set / Get let middleware and handlers share request-scoped data.
 func (c *Context) Set(key string, val interface{}) { c.store[key] = val }
 func (c *Context) Get(key string) interface{}      { return c.store[key] }
 
+// CSRFToken returns the CSRF token set by CSRF middleware for the request.
+func (c *Context) CSRFToken() string {
+	if token, ok := c.store["_csrf_token"].(string); ok {
+		return token
+	}
+	return ""
+}
+
+// SetCSRFToken stores the active CSRF token in the request store.
+func (c *Context) SetCSRFToken(token string) {
+	c.store["_csrf_token"] = token
+}
+
 // App exposes the framework's App container (DB, config, container) to
 // handlers that need it.
 func (c *Context) App() *App { return c.app }
+
+// Cache provides convenient access to the app's in-memory Cache.
+func (c *Context) Cache() *Cache {
+	if c.app != nil {
+		return c.app.Cache
+	}
+	return nil
+}
+
+// Queue provides convenient access to the app's background job Queue.
+func (c *Context) Queue() *Queue {
+	if c.app != nil {
+		return c.app.Queue
+	}
+	return nil
+}
 
 // --- Response helpers -----------------------------------------------------
 
@@ -118,3 +181,4 @@ func RenderStandalone(w http.ResponseWriter, tplText string, data interface{}) e
 	}
 	return t.Execute(w, data)
 }
+

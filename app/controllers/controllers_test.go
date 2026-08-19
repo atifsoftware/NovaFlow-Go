@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"novaflow/core"
@@ -164,3 +165,25 @@ func TestAuthApiControllerRegisterValidation(t *testing.T) {
 		t.Error("expected success=false for missing registration data")
 	}
 }
+
+func TestAuthApiControllerJSONBodyValidation(t *testing.T) {
+	app := core.NewApp("../../.env", "")
+	if app.Auth == nil {
+		t.Skip("database not configured, skipping auth controller test")
+	}
+
+	router := core.NewRouter(app)
+	ctrl := NewAuthApiController(app.Auth)
+	router.Post("/api/v1/login", ctrl.Login)
+
+	// Test with JSON body missing password
+	req := httptest.NewRequest("POST", "/api/v1/login", strings.NewReader(`{"email":"test@example.com","password":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status 422 for missing password, got %d", w.Code)
+	}
+}
+

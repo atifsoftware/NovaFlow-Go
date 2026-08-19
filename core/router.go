@@ -163,7 +163,12 @@ func (r *Router) match(method, path string) (*route, map[string]string, bool, bo
 // http.ListenAndServe or wrapped by additional global middleware in App.
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ctx := newContext(w, req, r.app)
-	rt, params, found, pathExists := r.match(req.Method, req.URL.Path)
+	defer releaseContext(ctx)
+	r.handleContext(ctx)
+}
+
+func (r *Router) handleContext(ctx *Context) {
+	rt, params, found, pathExists := r.match(ctx.Request.Method, ctx.Request.URL.Path)
 	if !found {
 		if pathExists {
 			r.MethodNotAllowed(ctx)
@@ -180,6 +185,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	final(ctx)
 }
+
 
 // isJSONRequest returns true if the client prefers a JSON response
 // (API calls set Accept: application/json or use /api/ prefix).

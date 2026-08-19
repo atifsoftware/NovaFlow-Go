@@ -1,6 +1,9 @@
 package core
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -85,6 +88,71 @@ func Recover() Middleware {
 	}
 }
 
+// SecurityHeaders injects standard enterprise HTTP security headers.
+func SecurityHeaders() Middleware {
+	return func(next HandlerFunc) HandlerFunc {
+		return func(c *Context) {
+			c.Writer.Header().Set("X-Content-Type-Options", "nosniff")
+			c.Writer.Header().Set("X-Frame-Options", "SAMEORIGIN")
+			c.Writer.Header().Set("X-XSS-Protection", "1; mode=block")
+			c.Writer.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			next(c)
+		}
+	}
+}
+
+// CSRF provides Cross-Site Request Forgery protection for session-based web requests.
+func CSRF() Middleware {
+	return func(next HandlerFunc) HandlerFunc {
+		return func(c *Context) {
+			// Skip CSRF checks for API routes or JSON requests
+			if isJSONRequest(c.Request) {
+				next(c)
+				return
+			}
+
+			// Read existing token from cookie, or generate a new one
+			cookie, err := c.Request.Cookie("csrf_token")
+			var token string
+			if err == nil && cookie.Value != "" {
+				token = cookie.Value
+			} else {
+				token = generateRandomToken(32)
+				http.SetCookie(c.Writer, &http.Cookie{
+					Name:     "csrf_token",
+					Value:    token,
+					Path:     "/",
+					HttpOnly: false, // Accessible by client JS/forms if needed
+					Secure:   isSecureEnv(),
+					SameSite: http.SameSiteLaxMode,
+				})
+			}
+			c.SetCSRFToken(token)
+
+			// Enforce validation on state-changing methods
+			method := c.Request.Method
+			if method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch || method == http.MethodDelete {
+				clientToken := c.Request.Header.Get("X-CSRF-Token")
+				if clientToken == "" {
+					clientToken = c.Request.FormValue("_csrf_token")
+				}
+				if clientToken == "" || subtle.ConstantTimeCompare([]byte(token), []byte(clientToken)) != 1 {
+					c.HTML(http.StatusForbidden, "<h1>403 — CSRF Token Mismatch</h1>")
+					return
+				}
+			}
+
+			next(c)
+		}
+	}
+}
+
+func generateRandomToken(n int) string {
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
 // CORS adds permissive CORS headers; pass explicit origins for production.
 func CORS(allowedOrigins ...string) Middleware {
 	origin := "*"
@@ -95,7 +163,7 @@ func CORS(allowedOrigins ...string) Middleware {
 		return func(c *Context) {
 			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 			c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token, X-Request-ID")
 			if c.Request.Method == http.MethodOptions {
 				c.Writer.WriteHeader(http.StatusNoContent)
 				return
@@ -104,6 +172,7 @@ func CORS(allowedOrigins ...string) Middleware {
 		}
 	}
 }
+
 
 // Auth requires a valid session (cookie-based, for web routes). It reads
 // the "session_user" cookie set by AuthService.Login and rejects the

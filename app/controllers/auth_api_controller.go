@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"net/http"
+	"strings"
 
 	"novaflow/core"
 )
@@ -16,11 +17,28 @@ func NewAuthApiController(auth *core.AuthService) *AuthApiController {
 	return &AuthApiController{auth: auth}
 }
 
+type authLoginPayload struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 // POST /api/v1/login
 func (a *AuthApiController) Login(c *core.Context) {
+	var payload authLoginPayload
+
+	if strings.Contains(c.Request.Header.Get("Content-Type"), "application/json") {
+		if err := c.BindJSON(&payload); err != nil {
+			c.JSONError(http.StatusBadRequest, "invalid JSON payload")
+			return
+		}
+	} else {
+		payload.Email = c.Input("email")
+		payload.Password = c.Input("password")
+	}
+
 	v := core.NewValidator(map[string]string{
-		"email":    c.Input("email"),
-		"password": c.Input("password"),
+		"email":    payload.Email,
+		"password": payload.Password,
 	})
 	v.Required("email").Email("email").Required("password")
 	if !v.Passes() {
@@ -28,7 +46,7 @@ func (a *AuthApiController) Login(c *core.Context) {
 		return
 	}
 
-	result, err := a.auth.LoginAPI(c.Input("email"), c.Input("password"))
+	result, err := a.auth.LoginAPI(payload.Email, payload.Password)
 	if err != nil {
 		c.JSONError(http.StatusUnauthorized, "invalid email or password")
 		return
@@ -44,12 +62,31 @@ func (a *AuthApiController) Login(c *core.Context) {
 	})
 }
 
+type authRegisterPayload struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 // POST /api/v1/register
 func (a *AuthApiController) Register(c *core.Context) {
+	var payload authRegisterPayload
+
+	if strings.Contains(c.Request.Header.Get("Content-Type"), "application/json") {
+		if err := c.BindJSON(&payload); err != nil {
+			c.JSONError(http.StatusBadRequest, "invalid JSON payload")
+			return
+		}
+	} else {
+		payload.Name = c.Input("name")
+		payload.Email = c.Input("email")
+		payload.Password = c.Input("password")
+	}
+
 	v := core.NewValidator(map[string]string{
-		"name":     c.Input("name"),
-		"email":    c.Input("email"),
-		"password": c.Input("password"),
+		"name":     payload.Name,
+		"email":    payload.Email,
+		"password": payload.Password,
 	})
 	v.Required("name").Required("email").Email("email").Required("password").MinLen("password", 6)
 	if !v.Passes() {
@@ -57,7 +94,7 @@ func (a *AuthApiController) Register(c *core.Context) {
 		return
 	}
 
-	id, err := a.auth.Register(c.Input("name"), c.Input("email"), c.Input("password"))
+	id, err := a.auth.Register(payload.Name, payload.Email, payload.Password)
 	if err != nil {
 		c.JSONError(http.StatusInternalServerError, "could not create account: "+err.Error())
 		return
@@ -70,3 +107,4 @@ func (a *AuthApiController) Me(c *core.Context) {
 	claims, _ := c.Get("claims").(core.Claims)
 	c.JSONSuccess(claims)
 }
+

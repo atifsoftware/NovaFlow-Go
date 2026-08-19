@@ -22,6 +22,7 @@ func (k *Kernel) Global() []core.Middleware {
 	return []core.Middleware{
 		core.Recover(),
 		core.Logger(),
+		core.SecurityHeaders(),
 	}
 }
 
@@ -30,7 +31,7 @@ func (k *Kernel) Groups(group string) []core.Middleware {
 	switch group {
 	case "web":
 		return []core.Middleware{
-			// Web-specific middleware (e.g. Session start, CSRF, etc.)
+			core.CSRF(),
 		}
 	case "api":
 		limiter := core.NewRateLimiter(60, time.Minute)
@@ -44,7 +45,7 @@ func (k *Kernel) Groups(group string) []core.Middleware {
 	}
 }
 
-// Resolve translates an alias string (e.g., "auth", "api_auth") into its middleware handler.
+// Resolve translates an alias string (e.g., "auth", "api_auth", "csrf") into its middleware handler.
 func (k *Kernel) Resolve(alias string) core.Middleware {
 	switch alias {
 	case "auth":
@@ -55,6 +56,11 @@ func (k *Kernel) Resolve(alias string) core.Middleware {
 		if k.app.Auth != nil {
 			return core.AuthAPI(k.app.Auth)
 		}
+	case "csrf":
+		return core.CSRF()
+	case "security":
+		return core.SecurityHeaders()
 	}
 	return nil
 }
+

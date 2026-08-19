@@ -75,13 +75,17 @@ func cmdHealth() {
 	fmt.Printf("APP_ENV:      %s\n", app.Config.Get("APP_ENV", "local"))
 	fmt.Printf("APP_PORT:     %s\n", app.Config.Get("APP_PORT", "8080"))
 	if app.DB != nil {
+		driverName := "mysql"
+		if app.DB.Dialect != nil {
+			driverName = app.DB.Dialect.DriverName()
+		}
 		if err := app.DB.Conn.Ping(); err != nil {
-			fmt.Println("Database:     FAILED -", err)
+			fmt.Printf("Database (%s): FAILED - %v\n", driverName, err)
 			os.Exit(1)
 		}
-		fmt.Println("Database:     OK")
+		fmt.Printf("Database (%s): OK\n", driverName)
 	} else {
-		fmt.Println("Database:     not configured (set DB_HOST in .env)")
+		fmt.Println("Database:     not configured (set DB_CONNECTION / DB_HOST in .env)")
 	}
 	fmt.Println("Status:       healthy")
 }
@@ -101,23 +105,46 @@ func cmdRoutes() {
 func cmdMigrate() {
 	app := core.NewApp(".env", "")
 	if app.DB == nil {
-		fmt.Println("No database configured (set DB_HOST in .env)")
+		fmt.Println("No database configured (set DB_CONNECTION / DB_HOST in .env)")
 		os.Exit(1)
 	}
 
+	var createMigrationsTableSQL string
+	driverName := "mysql"
+	if app.DB.Dialect != nil {
+		driverName = app.DB.Dialect.DriverName()
+	}
+
+	switch driverName {
+	case "postgres":
+		createMigrationsTableSQL = `CREATE TABLE IF NOT EXISTS migrations (
+			id SERIAL PRIMARY KEY,
+			migration VARCHAR(255) NOT NULL UNIQUE,
+			batch INT NOT NULL DEFAULT 1,
+			run_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`
+	case "sqlite":
+		createMigrationsTableSQL = `CREATE TABLE IF NOT EXISTS migrations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			migration VARCHAR(255) NOT NULL UNIQUE,
+			batch INT NOT NULL DEFAULT 1,
+			run_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`
+	default:
+		createMigrationsTableSQL = `CREATE TABLE IF NOT EXISTS migrations (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			migration VARCHAR(255) NOT NULL UNIQUE,
+			batch INT NOT NULL DEFAULT 1,
+			run_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`
+	}
+
 	// Create table migrations. Add batch column to support rollbacks.
-	if _, err := app.DB.Exec(`CREATE TABLE IF NOT EXISTS migrations (
-		id INT AUTO_INCREMENT PRIMARY KEY,
-		migration VARCHAR(255) NOT NULL UNIQUE,
-		batch INT NOT NULL DEFAULT 1,
-		run_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-	)`); err != nil {
+	if _, err := app.DB.Exec(createMigrationsTableSQL); err != nil {
 		fmt.Println("Could not create migrations table:", err)
 		os.Exit(1)
 	}
 
-	// Ensure batch column exists for older tables
-	_, _ = app.DB.Exec("ALTER TABLE migrations ADD COLUMN batch INT NOT NULL DEFAULT 1")
 
 	applied := map[string]int{}
 	rows, err := app.DB.Raw("SELECT migration, batch FROM migrations")

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -126,7 +127,45 @@ func (r *Repository[T]) Delete(id interface{}) (int64, error) {
 	return r.db.Table(r.tableName()).Where("id", "=", id).Delete()
 }
 
-// --- reflection helpers -----------------------------------------------
+// --- reflection helpers & metadata caching ------------------------------
+
+type structFieldInfo struct {
+	index int
+	name  string
+	dbCol string
+}
+
+type structMeta struct {
+	fields []structFieldInfo
+}
+
+var structMetaCache sync.Map
+
+func getStructMeta(t reflect.Type) *structMeta {
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if val, ok := structMetaCache.Load(t); ok {
+		return val.(*structMeta)
+	}
+
+	var fields []structFieldInfo
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		col := field.Tag.Get("db")
+		if col == "" || col == "-" {
+			continue
+		}
+		fields = append(fields, structFieldInfo{
+			index: i,
+			name:  field.Name,
+			dbCol: col,
+		})
+	}
+	meta := &structMeta{fields: fields}
+	structMetaCache.Store(t, meta)
+	return meta
+}
 
 func rowsToStructs[T Model](rows []map[string]interface{}) ([]T, error) {
 	out := make([]T, 0, len(rows))
@@ -140,25 +179,20 @@ func rowsToStructs[T Model](rows []map[string]interface{}) ([]T, error) {
 	return out, nil
 }
 
-// mapToStruct copies a DB row (column -> value) into a struct using `db:"col"`
-// tags, converting common SQL driver types (string/[]byte/int64/float64/time)
-// into the destination field's Go type.
+// mapToStruct copies a DB row (column -> value) into a struct using cached `db:"col"`
+// metadata, converting common SQL driver types into the destination field's Go type.
 func mapToStruct(row map[string]interface{}, dest interface{}) error {
 	v := reflect.ValueOf(dest).Elem()
-	t := v.Type()
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		col := field.Tag.Get("db")
-		if col == "" || col == "-" {
-			continue
-		}
-		raw, ok := row[col]
+	meta := getStructMeta(v.Type())
+
+	for _, fInfo := range meta.fields {
+		raw, ok := row[fInfo.dbCol]
 		if !ok || raw == nil {
 			continue
 		}
-		fv := v.Field(i)
+		fv := v.Field(fInfo.index)
 		if err := setField(fv, raw); err != nil {
-			return fmt.Errorf("field %s: %w", field.Name, err)
+			return fmt.Errorf("field %s: %w", fInfo.name, err)
 		}
 	}
 	return nil
@@ -198,10 +232,15 @@ func setField(fv reflect.Value, raw interface{}) error {
 			case string:
 				if ts, err := time.Parse("2006-01-02 15:04:05", n); err == nil {
 					fv.Set(reflect.ValueOf(ts))
+				} else if ts, err := time.Parse(time.RFC3339, n); err == nil {
+					fv.Set(reflect.ValueOf(ts))
+				} else if ts, err := time.Parse("2006-01-02", n); err == nil {
+					fv.Set(reflect.ValueOf(ts))
 				}
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -216,27 +255,24 @@ func toString(raw interface{}) string {
 	}
 }
 
-// structToMap converts a struct into a column->value map using `db:"col"`
-// tags. When skipEmptyID is true, an "id" field left at its zero value is
+// structToMap converts a struct into a column->value map using cached `db:"col"`
+// metadata. When skipEmptyID is true, an "id" field left at its zero value is
 // omitted so INSERT lets the database auto-increment it.
 func structToMap(entity interface{}, skipEmptyID bool) map[string]interface{} {
 	v := reflect.ValueOf(entity)
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
-	t := v.Type()
+	meta := getStructMeta(v.Type())
 	out := map[string]interface{}{}
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		col := field.Tag.Get("db")
-		if col == "" || col == "-" {
+
+	for _, fInfo := range meta.fields {
+		fv := v.Field(fInfo.index)
+		if fInfo.dbCol == "id" && skipEmptyID && fv.IsZero() {
 			continue
 		}
-		fv := v.Field(i)
-		if col == "id" && skipEmptyID && fv.IsZero() {
-			continue
-		}
-		out[col] = fv.Interface()
+		out[fInfo.dbCol] = fv.Interface()
 	}
 	return out
 }
+

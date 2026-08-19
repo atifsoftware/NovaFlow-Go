@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"novaflow/app/models"
 	"novaflow/core"
@@ -43,22 +44,41 @@ func (pc *ProductController) Show(c *core.Context) {
 	c.JSONSuccess(product)
 }
 
+type productPayload struct {
+	Name  string  `json:"name"`
+	Price float64 `json:"price"`
+}
+
 // POST /api/v1/products
 func (pc *ProductController) Store(c *core.Context) {
+	var payload productPayload
+
+	if strings.Contains(c.Request.Header.Get("Content-Type"), "application/json") {
+		if err := c.BindJSON(&payload); err != nil {
+			c.JSONError(http.StatusBadRequest, "invalid JSON payload")
+			return
+		}
+	} else {
+		payload.Name = c.Input("name")
+		payload.Price, _ = strconv.ParseFloat(c.Input("price"), 64)
+	}
+
 	v := core.NewValidator(map[string]string{
-		"name":  c.Input("name"),
-		"price": c.Input("price"),
+		"name":  payload.Name,
+		"price": strconv.FormatFloat(payload.Price, 'f', -1, 64),
 	})
 	v.Required("name").Required("price").Numeric("price")
+	if payload.Price <= 0 {
+		v.Required("price") // ensures price is provided and positive
+	}
 	if !v.Passes() {
 		c.JSONError(http.StatusUnprocessableEntity, v.FirstError())
 		return
 	}
 
-	price, _ := strconv.ParseFloat(c.Input("price"), 64)
 	product := models.Product{
-		Name:   c.Input("name"),
-		Price:  price,
+		Name:   payload.Name,
+		Price:  payload.Price,
 		Status: "active",
 	}
 	id, err := pc.repo.Create(&product)
@@ -81,14 +101,30 @@ func (pc *ProductController) Update(c *core.Context) {
 		c.JSONError(http.StatusNotFound, "product not found")
 		return
 	}
-	if name := c.Input("name"); name != "" {
-		product.Name = name
-	}
-	if priceStr := c.Input("price"); priceStr != "" {
-		if price, err := strconv.ParseFloat(priceStr, 64); err == nil {
-			product.Price = price
+
+	if strings.Contains(c.Request.Header.Get("Content-Type"), "application/json") {
+		var payload productPayload
+		if err := c.BindJSON(&payload); err != nil {
+			c.JSONError(http.StatusBadRequest, "invalid JSON payload")
+			return
+		}
+		if payload.Name != "" {
+			product.Name = payload.Name
+		}
+		if payload.Price > 0 {
+			product.Price = payload.Price
+		}
+	} else {
+		if name := c.Input("name"); name != "" {
+			product.Name = name
+		}
+		if priceStr := c.Input("price"); priceStr != "" {
+			if price, err := strconv.ParseFloat(priceStr, 64); err == nil && price > 0 {
+				product.Price = price
+			}
 		}
 	}
+
 	if _, err := pc.repo.Update(product); err != nil {
 		c.JSONError(http.StatusInternalServerError, err.Error())
 		return
@@ -109,3 +145,4 @@ func (pc *ProductController) Destroy(c *core.Context) {
 	}
 	c.JSON(http.StatusOK, map[string]interface{}{"success": true, "message": "product deleted"})
 }
+

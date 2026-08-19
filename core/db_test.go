@@ -13,7 +13,7 @@ func TestQueryBuilderClone(t *testing.T) {
 		offsetN: 5,
 		joins:   []string{"LEFT JOIN categories ON products.category_id = categories.id"},
 		wheres: []whereClause{
-			{boolean: "AND", sql: "status = ?", args: []interface{}{"active"}},
+			{boolean: "AND", column: "status", op: "=", value: "active"},
 		},
 	}
 
@@ -37,9 +37,10 @@ func TestQueryBuilderClone(t *testing.T) {
 	if len(clone.joins) != len(qb.joins) || clone.joins[0] != qb.joins[0] {
 		t.Error("joins were not cloned")
 	}
-	if len(clone.wheres) != len(qb.wheres) || clone.wheres[0].sql != qb.wheres[0].sql {
+	if len(clone.wheres) != len(qb.wheres) || clone.wheres[0].column != qb.wheres[0].column {
 		t.Error("wheres were not cloned")
 	}
+
 
 	clone.Where("price", ">", 100)
 	if len(qb.wheres) != 1 {

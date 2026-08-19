@@ -2,22 +2,20 @@ package core
 
 import (
 	"context"
-	"fmt"
 	"html/template"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"golang.org/x/exp/slog"
-
-	_ "github.com/go-sql-driver/mysql"
 )
 
 // App is the central object every NovaFlow project builds once in main.go.
 // It wires together config, the database connection, the DI container,
-// parsed view templates, the auth service, and the router.
+// parsed view templates, the auth service, cache, async queue, and the router.
 type App struct {
 	Config    *Config
 	DB        *DB
@@ -26,6 +24,8 @@ type App struct {
 	Auth      *AuthService
 	Router    *Router
 	AI        *AIService
+	Cache     *Cache
+	Queue     *Queue
 }
 
 // NewApp loads .env, connects to the database (if DB_HOST is set),
@@ -43,23 +43,39 @@ func NewApp(envPath, viewsDir string) *App {
 		Config:    cfg,
 		Container: NewContainer(),
 		AI:        NewAIService(cfg),
+		Cache:     NewCache(time.Minute),
+		Queue:     NewQueue(4, 100),
 	}
 	app.Container.Bind("ai", app.AI)
+	app.Container.Bind("cache", app.Cache)
+	app.Container.Bind("queue", app.Queue)
 
-	if host := cfg.Get("DB_HOST", ""); host != "" {
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&charset=utf8mb4",
-			cfg.Get("DB_USER", "root"),
-			cfg.Get("DB_PASS", ""),
-			host,
-			cfg.Get("DB_PORT", "3306"),
-			cfg.Get("DB_NAME", "novaflow_db"),
-		)
-		db, err := OpenDB("mysql", dsn)
-		if err != nil {
-			slog.Error("database connection failed", "error", err)
-		} else {
-			app.DB = db
-			app.Container.Bind("db", db)
+	driver := cfg.Get("DB_CONNECTION", "")
+	host := cfg.Get("DB_HOST", "")
+	sqliteFile := cfg.Get("DB_DATABASE", "")
+
+	if driver != "" || host != "" || sqliteFile != "" {
+		if driver == "" {
+			driver = "mysql"
+		}
+		dialect := GetDialect(driver)
+		dsn := dialect.BuildDSN(cfg)
+
+		shouldConnect := false
+		if dialect.DriverName() == "sqlite" && (sqliteFile != "" || strings.EqualFold(driver, "sqlite") || strings.EqualFold(driver, "sqlite3")) {
+			shouldConnect = true
+		} else if host != "" {
+			shouldConnect = true
+		}
+
+		if shouldConnect {
+			db, err := OpenDBWithDialect(dialect, dsn)
+			if err != nil {
+				slog.Error("database connection failed", "driver", dialect.DriverName(), "error", err)
+			} else {
+				app.DB = db
+				app.Container.Bind("db", db)
+			}
 		}
 	}
 
@@ -67,6 +83,7 @@ func NewApp(envPath, viewsDir string) *App {
 		app.Auth = NewAuthService(app.DB, cfg.Get("JWT_SECRET", "change-me-in-.env"))
 		app.Container.Bind("auth", app.Auth)
 	}
+
 
 	if viewsDir != "" {
 		views, err := LoadViews(viewsDir)
@@ -122,6 +139,16 @@ func (a *App) Run(addr string, globalMw ...Middleware) error {
 		return err
 	}
 
+	// Drain background queue workers
+	if a.Queue != nil {
+		a.Queue.Shutdown(3 * time.Second)
+	}
+
+	// Stop cache cleanup worker
+	if a.Cache != nil {
+		a.Cache.Close()
+	}
+
 	// Close database connection pool if open
 	if a.DB != nil {
 		_ = a.DB.Conn.Close()
@@ -135,10 +162,13 @@ func (a *App) Run(addr string, globalMw ...Middleware) error {
 // middleware wraps every request regardless of which route matched.
 func withGlobalMiddleware(router *Router, mw ...Middleware) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		final := func(c *Context) { router.ServeHTTP(c.Writer, c.Request) }
+		ctx := newContext(w, r, router.app)
+		defer releaseContext(ctx)
+		final := func(c *Context) { router.handleContext(c) }
 		for i := len(mw) - 1; i >= 0; i-- {
 			final = mw[i](final)
 		}
-		final(newContext(w, r, router.app))
+		final(ctx)
 	})
 }
+
