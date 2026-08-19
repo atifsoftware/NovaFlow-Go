@@ -275,5 +275,6 @@ func (ctl *DocsController) OpenAPISpec(c *core.Context) {
   }
 }`
 	c.Writer.Header().Set("Content-Type", "application/json")
-	c.String(http.StatusOK, spec)
+	c.Writer.WriteHeader(http.StatusOK)
+	_, _ = c.Writer.Write([]byte(spec))
 }

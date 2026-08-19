@@ -332,9 +332,11 @@ func (q *QueryBuilder) Delete() (int64, error) {
 }
 
 // Pluck returns a slice containing only the values of the requested column.
+// It operates on a clone so the original QueryBuilder is not mutated.
 func (q *QueryBuilder) Pluck(column string) ([]interface{}, error) {
-	q.columns = []string{column}
-	rows, err := q.Get()
+	clone := q.Clone()
+	clone.columns = []string{column}
+	rows, err := clone.Get()
 	if err != nil {
 		return nil, err
 	}

@@ -1,9 +1,13 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"golang.org/x/exp/slog"
@@ -76,10 +80,9 @@ func NewApp(envPath, viewsDir string) *App {
 	return app
 }
 
-// Run starts the HTTP server, wrapping the router with Recover + Logger
-// global middleware so a panicking handler never takes the process down.
-// Run starts the HTTP server, wrapping the router with the provided
-// global middleware chain so requests are logged, recovered, etc.
+// Run starts the HTTP server with graceful shutdown support.
+// On receiving SIGINT or SIGTERM, the server stops accepting new connections
+// and waits up to 10 seconds for in-flight requests to complete before exiting.
 func (a *App) Run(addr string, globalMw ...Middleware) error {
 	handler := withGlobalMiddleware(a.Router, globalMw...)
 	srv := &http.Server{
@@ -88,8 +91,44 @@ func (a *App) Run(addr string, globalMw ...Middleware) error {
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 	}
-	slog.Info("NovaFlow server listening", "addr", addr)
-	return srv.ListenAndServe()
+
+	// Channel to receive OS shutdown signals
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	// Start server in a goroutine
+	errCh := make(chan error, 1)
+	go func() {
+		slog.Info("NovaFlow server listening", "addr", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+
+	// Block until we receive a signal or a startup error
+	select {
+	case sig := <-quit:
+		slog.Info("shutdown signal received, gracefully stopping...", "signal", sig.String())
+	case err := <-errCh:
+		return err
+	}
+
+	// Create a deadline context for the shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		slog.Error("forced shutdown", "error", err)
+		return err
+	}
+
+	// Close database connection pool if open
+	if a.DB != nil {
+		_ = a.DB.Conn.Close()
+	}
+
+	slog.Info("NovaFlow server stopped gracefully")
+	return nil
 }
 
 // withGlobalMiddleware adapts the *Router (an http.Handler) so that global
