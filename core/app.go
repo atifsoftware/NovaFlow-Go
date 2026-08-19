@@ -21,6 +21,7 @@ type App struct {
 	Views     map[string]*template.Template
 	Auth      *AuthService
 	Router    *Router
+	AI        *AIService
 }
 
 // NewApp loads .env, connects to the database (if DB_HOST is set),
@@ -37,7 +38,9 @@ func NewApp(envPath, viewsDir string) *App {
 	app := &App{
 		Config:    cfg,
 		Container: NewContainer(),
+		AI:        NewAIService(cfg),
 	}
+	app.Container.Bind("ai", app.AI)
 
 	if host := cfg.Get("DB_HOST", ""); host != "" {
 		dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&charset=utf8mb4",
