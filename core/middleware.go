@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -25,18 +26,42 @@ func Logger() Middleware {
 	}
 }
 
-// Recover turns a panic inside a handler into a 500 JSON response using slog to log.
+// Recover turns a panic inside a handler into an Intelligent Error Page (dev) or generic error (prod).
 func Recover() Middleware {
 	return func(next HandlerFunc) HandlerFunc {
 		return func(c *Context) {
 			defer func() {
 				if err := recover(); err != nil {
+					detail := NewPanicDetail(err, c.Request)
+
 					slog.Error("panic recovered",
-						"error", err,
-						"path", c.Request.URL.Path,
-						"method", c.Request.Method,
+						"error", detail.Message,
+						"file", detail.File,
+						"line", detail.Line,
+						"function", detail.Function,
 					)
-					c.JSONError(http.StatusInternalServerError, "internal server error")
+
+					isAPI := strings.Contains(c.Request.URL.Path, "/api/") || strings.Contains(c.Request.Header.Get("Accept"), "application/json")
+					isLocal := c.app.Config.Get("APP_ENV", "local") != "production"
+
+					if isLocal {
+						if isAPI {
+							c.JSON(http.StatusInternalServerError, map[string]interface{}{
+								"success": false,
+								"message": detail.Message,
+								"file":    filepath.Base(detail.File),
+								"line":    detail.Line,
+							})
+						} else {
+							RenderIntelligentError(c.Writer, detail)
+						}
+					} else {
+						if isAPI {
+							c.JSONError(http.StatusInternalServerError, "internal server error")
+						} else {
+							c.String(http.StatusInternalServerError, "internal server error")
+						}
+					}
 				}
 			}()
 			next(c)
