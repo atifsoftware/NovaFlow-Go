@@ -21,6 +21,14 @@
 
 ---
 
+## 📖 Documentation & Guides
+
+Detailed documentation and guides for core framework features:
+- [**QueryBuilder Documentation**](QUERY_BUILDER.md) — Learn how to build secure SQL queries, transactions, joins, plucking, and cloning.
+- [**Models & Repository Documentation**](MODELS_AND_REPOSITORY.md) — Learn how to define models with database tags and interact with the generic repository pattern.
+
+---
+
 ## 📂 Project Structure
 
 ```
@@ -172,6 +180,14 @@ DROP TABLE IF EXISTS products;
 - **মাইগ্রেশন ও রোলব্যাক**: পিএইচপি সংস্করণের মতোই উন্নত রোলব্যাক (`migrate:rollback`) সিস্টেম।
 - **স্ট্রাকচার্ড লগিং**: স্ট্যান্ডার্ড `log/slog` সমৃদ্ধ প্রোডাকশন রেডি জেসন ও টেক্সট লগিং।
 - **রিফ্লেক্টিভ ভ্যালিডেশন**: গো স্ট্রাক্ট ফিল্ডে `validate:"required"` ট্যাগের সহজ ব্যবহার।
+
+---
+
+## 📖 ডকুমেন্টেশন ও গাইডসমূহ
+
+ফ্রেমওয়ার্কের মূল ফিচারগুলোর বিস্তারিত গাইড এখানে দেখুন:
+- [**কোয়েরি বিল্ডার (QueryBuilder) ডকুমেন্টেশন**](QUERY_BUILDER.md) — ডাটাবেস কোয়েরি, ট্রানজেকশন, জয়েন এবং ক্লোনিং ব্যবহারের নিয়ম।
+- [**মডেল ও রিপোজিটরি (Models & Repository) ডকুমেন্টেশন**](MODELS_AND_REPOSITORY.md) — টাইপ-সেফ ডাটা মডেল তৈরি এবং রিপোজিটরি ব্যবহারের নিয়ম।
 
 ---
 
