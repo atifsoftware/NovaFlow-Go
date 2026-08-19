@@ -5,13 +5,16 @@ import (
 	"html/template"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
 	"golang.org/x/exp/slog"
 )
+
 
 // App is the central object every NovaFlow project builds once in main.go.
 // It wires together config, the database connection, the DI container,
@@ -126,6 +129,28 @@ func (a *App) Run(addr string, globalMw ...Middleware) error {
 	errCh := make(chan error, 1)
 	go func() {
 		slog.Info("NovaFlow server listening", "addr", addr)
+
+		// Auto-open browser if AUTO_OPEN_BROWSER=true in .env (default: false for servers, true for desktop standalone)
+		if a.Config.GetBool("AUTO_OPEN_BROWSER", false) {
+			go func() {
+				time.Sleep(350 * time.Millisecond)
+				targetPath := a.Config.Get("AUTO_OPEN_PATH", "/")
+				if !strings.HasPrefix(targetPath, "/") {
+					targetPath = "/" + targetPath
+				}
+
+				host := "http://localhost"
+				if strings.HasPrefix(addr, ":") {
+					host += addr
+				} else {
+					host = "http://" + addr
+				}
+				targetURL := host + targetPath
+				slog.Info("opening default browser", "url", targetURL)
+				_ = OpenBrowser(targetURL)
+			}()
+		}
+
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}
@@ -145,6 +170,21 @@ func (a *App) Run(addr string, globalMw ...Middleware) error {
 
 	return a.GracefulShutdown(srv, ctx)
 }
+
+// OpenBrowser opens the specified URL in the system's default web browser.
+func OpenBrowser(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	case "darwin":
+		cmd = exec.Command("open", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	return cmd.Start()
+}
+
 
 // GracefulShutdown coordinates a robust, ordered shutdown of all framework subsystems:
 // 1. Stops HTTP listener and finishes in-flight requests (releasing pooled contexts).
