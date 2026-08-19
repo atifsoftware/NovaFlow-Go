@@ -99,7 +99,8 @@ func NewApp(envPath, viewsDir string) *App {
 
 // Run starts the HTTP server with graceful shutdown support.
 // On receiving SIGINT or SIGTERM, the server stops accepting new connections
-// and waits up to 10 seconds for in-flight requests to complete before exiting.
+// and waits up to 10 seconds for in-flight requests, queue workers, cache workers,
+// and database connections to clean up gracefully before exiting.
 func (a *App) Run(addr string, globalMw ...Middleware) error {
 	handler := withGlobalMiddleware(a.Router, globalMw...)
 	srv := &http.Server{
@@ -125,7 +126,7 @@ func (a *App) Run(addr string, globalMw ...Middleware) error {
 	// Block until we receive a signal or a startup error
 	select {
 	case sig := <-quit:
-		slog.Info("shutdown signal received, gracefully stopping...", "signal", sig.String())
+		slog.Info("shutdown signal received, initiating graceful shutdown...", "signal", sig.String())
 	case err := <-errCh:
 		return err
 	}
@@ -134,29 +135,48 @@ func (a *App) Run(addr string, globalMw ...Middleware) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
-		slog.Error("forced shutdown", "error", err)
-		return err
+	return a.GracefulShutdown(srv, ctx)
+}
+
+// GracefulShutdown coordinates a robust, ordered shutdown of all framework subsystems:
+// 1. Stops HTTP listener and finishes in-flight requests (releasing pooled contexts).
+// 2. Drains background Queue worker pool of all remaining dispatched jobs.
+// 3. Closes background Cache cleanup ticker.
+// 4. Closes database connection pool after all handlers and background tasks finish.
+func (a *App) GracefulShutdown(srv *http.Server, ctx context.Context) error {
+	slog.Info("graceful shutdown: stopping HTTP server and completing in-flight requests...")
+	if srv != nil {
+		if err := srv.Shutdown(ctx); err != nil {
+			slog.Error("forced HTTP server shutdown", "error", err)
+			return err
+		}
+		slog.Info("graceful shutdown: HTTP server stopped")
 	}
 
-	// Drain background queue workers
+	// 2. Drain background job queue workers
 	if a.Queue != nil {
+		slog.Info("graceful shutdown: draining background job queue...")
 		a.Queue.Shutdown(3 * time.Second)
 	}
 
-	// Stop cache cleanup worker
+	// 3. Stop cache cleanup worker
 	if a.Cache != nil {
+		slog.Info("graceful shutdown: stopping cache cleanup worker...")
 		a.Cache.Close()
 	}
 
-	// Close database connection pool if open
-	if a.DB != nil {
-		_ = a.DB.Conn.Close()
+	// 4. Close database connection pool after all handlers & queue tasks complete
+	if a.DB != nil && a.DB.Conn != nil {
+		slog.Info("graceful shutdown: closing database connection pool...")
+		if err := a.DB.Conn.Close(); err != nil {
+			slog.Error("error closing database connection pool", "error", err)
+		}
 	}
 
-	slog.Info("NovaFlow server stopped gracefully")
+	slog.Info("NovaFlow server stopped gracefully with all resources cleaned up")
 	return nil
 }
+
 
 // withGlobalMiddleware adapts the *Router (an http.Handler) so that global
 // middleware wraps every request regardless of which route matched.

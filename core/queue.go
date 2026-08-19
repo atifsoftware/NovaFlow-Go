@@ -2,6 +2,7 @@ package core
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/exp/slog"
@@ -12,11 +13,12 @@ type Job func()
 
 // Queue provides a lightweight in-memory background worker pool.
 type Queue struct {
-	workers int
-	jobCh   chan Job
-	wg      sync.WaitGroup
-	quitCh  chan struct{}
-	once    sync.Once
+	workers  int
+	jobCh    chan Job
+	wg       sync.WaitGroup
+	quitCh   chan struct{}
+	isClosed atomic.Bool
+	once     sync.Once
 }
 
 // NewQueue creates and starts a background Queue worker pool.
@@ -79,14 +81,18 @@ func (q *Queue) executeJob(workerID int, job Job) {
 }
 
 // Dispatch adds a job to the background queue for asynchronous execution.
-// Returns true if queued successfully, or false if the queue is full/stopped.
+// Returns true if queued successfully, or false if the queue is shutting down.
 func (q *Queue) Dispatch(job Job) bool {
+	if q.isClosed.Load() {
+		slog.Warn("queue is shutting down, cannot accept new jobs")
+		return false
+	}
 	select {
 	case q.jobCh <- job:
 		return true
 	default:
-		slog.Warn("queue buffer is full, executing synchronously or dropping")
-		go job() // Fallback to dedicated goroutine
+		slog.Warn("queue buffer is full, executing in fallback goroutine")
+		go q.executeJob(0, job)
 		return true
 	}
 }
@@ -94,6 +100,7 @@ func (q *Queue) Dispatch(job Job) bool {
 // Shutdown gracefully waits for all pending jobs to complete within timeout.
 func (q *Queue) Shutdown(timeout time.Duration) bool {
 	q.once.Do(func() {
+		q.isClosed.Store(true)
 		close(q.quitCh)
 		close(q.jobCh)
 	})
@@ -106,9 +113,11 @@ func (q *Queue) Shutdown(timeout time.Duration) bool {
 
 	select {
 	case <-done:
+		slog.Info("queue worker pool drained and stopped cleanly")
 		return true
 	case <-time.After(timeout):
 		slog.Warn("queue shutdown timed out with pending jobs")
 		return false
 	}
 }
+

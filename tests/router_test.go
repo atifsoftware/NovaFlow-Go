@@ -1,9 +1,11 @@
 package tests
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"novaflow/app/middleware"
 	"novaflow/config"
@@ -103,4 +105,29 @@ func TestRegisterRoutesWithKernel(t *testing.T) {
 		t.Fatal("expected routes to be registered by the kernel")
 	}
 }
+
+func TestAppGracefulShutdown(t *testing.T) {
+	app := core.NewApp("../.env", "")
+	
+	// Dispatch a job into the queue
+	var jobDone bool
+	app.Queue.Dispatch(func() {
+		jobDone = true
+	})
+
+	// Set a cache item
+	app.Cache.Set("k", "v", time.Minute)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := app.GracefulShutdown(nil, ctx); err != nil {
+		t.Fatalf("expected clean graceful shutdown, got: %v", err)
+	}
+
+	if !jobDone {
+		t.Error("expected background queue jobs to drain during graceful shutdown")
+	}
+}
+
 
